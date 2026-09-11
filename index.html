@@ -333,7 +333,7 @@ function finishPull(tmp){
 var DATECOLS={
   colaboradores:['nascimento','admissao','data_desligamento','fim_experiencia','aso','contrato_cp','nr06','nr10','nr11','nr18','nr18_plat','nr35','os_seg'],
   rescisoes:['desligamento','vencimento'],
-  ferias:['inicio','fim','vencimento','data_financeiro'],
+  ferias:['inicio','fim','vencimento'],
   folha:['competencia'],
   custos:['competencia','vencimento']
 };
@@ -347,7 +347,7 @@ var NUMCOLS={
 var ALLOWED={
   colaboradores:['id','empresa','nome','cpf','rg','nascimento','funcao','nivel','telefone','admissao','salario','cache','diaria','passagem','email','endereco','cidade','cep','banco','agencia','tipo_conta','num_conta','pix','mei','contrato','tipo_contrato','data_desligamento','exp_efetivado','fim_experiencia','aso','contrato_cp','nr06','nr10','nr11','nr18','nr18_plat','nr35','os_seg','ficha_epi','nada_consta','emergencia','ativo','atualizado_em'],
   rescisoes:['id','empresa','colaborador','tipo_contrato','desligamento','tipo_desligamento','tipo_doc','multa_rescisoria','valor_multa_rescisoria','valor_complementar','valor_fgts_mensal','parcelado_pj','parcelas_pj','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
-  ferias:['id','empresa','colaborador','inicio','fim','dias','valor','vencimento','data_financeiro','financeiro','pasta','bloqueado','atualizado_em'],
+  ferias:['id','empresa','colaborador','inicio','fim','dias','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   folha:['id','empresa','competencia','qtd','liquido','gratif','total','atualizado_em'],
   custos:['id','empresa','competencia','descricao','valor','vencimento','financeiro','atualizado_em']
 };
@@ -386,6 +386,12 @@ function subBusinessDays(iso,n){
   if(!iso)return ''; var d=new Date((''+iso).slice(0,10)); if(isNaN(d.getTime()))return '';
   var left=n;
   while(left>0){ d.setDate(d.getDate()-1); var wd=d.getDay(); if(wd!==0&&wd!==6) left--; }
+  return d.toISOString().slice(0,10);
+}
+function nextBusinessDay(iso){
+  if(!iso)return ''; var d=new Date((''+iso).slice(0,10)); if(isNaN(d.getTime()))return '';
+  d.setDate(d.getDate()+1);
+  while(d.getDay()===0||d.getDay()===6){ d.setDate(d.getDate()+1); }
   return d.toISOString().slice(0,10);
 }
 /* definições de vencimentos (validade automática) */
@@ -676,9 +682,9 @@ var COLS = {
   ],
   ferias:[
     ['empresa','Empresa','sel'],['colaborador','Colaborador','text'],['inicio','Início gozo','date'],
-    ['fim','Último dia','date'],['dias','Qtd dias','autodays'],['valor','Valor','num2'],
-    ['vencimento','Vencimento (2 dias úteis antes)','date'],['data_financeiro','Entregue financeiro em','date'],
-    ['financeiro','Entregue financeiro','check'],['pasta','Doc na pasta','check'],['bloqueado','Concluído','lock']
+    ['dias','Qtd dias','int'],['fim','Último dia','calcDate'],['valor','Valor','num2'],
+    ['vencimento','Vencimento (2 dias úteis antes)','date'],
+    ['financeiro','Entregue financeiro','pastaCheck'],['pasta','Comprovante na pasta','checkVencido'],['bloqueado','Concluído','lock']
   ],
   folha:[
     ['empresa','Empresa','sel'],['competencia','Mês competência','month'],['qtd','Qtd colaboradores','int'],
@@ -697,30 +703,13 @@ var TITLES={rescisoes:['Controle de Rescisões','TRCT, FGTS mensal e FGTS rescis
 /* --- Status de férias (cruza colaboradores x registros) --- */
 function normname(s){ return (''+(s||'')).toLowerCase().replace(/\(.*?\)/g,'').replace(/[^a-zà-ú ]/gi,'').replace(/\s+/g,' ').trim(); }
 function feriasStatus(){
-  var regs=STORE.ferias, ativas=[], aguardando=[], vencidas=[];
+  var regs=STORE.ferias, ativas=[], agendadas=[];
   var tdy=today();
-  // ativas: registro em gozo hoje
-  regs.forEach(function(r){ var i=(''+(r.inicio||'')).slice(0,10), f=(''+(r.fim||'')).slice(0,10); if(i&&f&&i<=tdy&&tdy<=f) ativas.push(r); });
-  // mapa nome -> registros de férias
-  var byName={};
-  regs.forEach(function(r){ var k=normname(r.colaborador); if(!k)return; (byName[k]=byName[k]||[]).push(r); });
-  // colaboradores ativos
-  STORE.colaboradores.forEach(function(c){
-    if(c.ativo===false) return;
-    var adm=(''+(c.admissao||'')).slice(0,10); if(!adm) return;
-    var meses=Math.floor((daysBetween(adm,tdy)||0)/30.44);
-    var recs=byName[normname(c.nome)]||[];
-    var emGozoAgora=recs.some(function(r){ var i=(''+(r.inicio||'')).slice(0,10),f=(''+(r.fim||'')).slice(0,10); return i&&f&&i<=tdy&&tdy<=f; });
-    var temFuturo=recs.some(function(r){ var i=(''+(r.inicio||'')).slice(0,10); return i&&i>=tdy; });
-    // aguardando marcação: já adquiriu (>=12m), não está em gozo e não tem férias futuras marcadas
-    if(meses>=12 && !emGozoAgora && !temFuturo){ aguardando.push({nome:c.nome,meses:meses,empresa:c.empresa}); }
-    // vencidas: estourou prazo concessivo (>=24m) e nunca gozou / sem registro dentro do prazo
-    if(meses>=24){
-      var gozou=recs.some(function(r){ return (''+(r.fim||'')).slice(0,10) && (''+(r.fim||'')).slice(0,10) < tdy; });
-      if(!gozou) vencidas.push({nome:c.nome,meses:meses,empresa:c.empresa});
-    }
-  });
-  return {ativas:ativas,aguardando:aguardando,vencidas:vencidas,reg:regs.length};
+  // ativas: em gozo hoje E já pago (comprovante salvo na pasta)
+  regs.forEach(function(r){ var i=(''+(r.inicio||'')).slice(0,10), f=(''+(r.fim||'')).slice(0,10); if(i&&f&&i<=tdy&&tdy<=f&&isYes(r.pasta)) ativas.push(r); });
+  // agendadas: ainda não pagas (comprovante não salvo na pasta)
+  regs.forEach(function(r){ if(!isYes(r.pasta)) agendadas.push(r); });
+  return {ativas:ativas,agendadas:agendadas,reg:regs.length};
 }
 function feriasPanel(){
   var fs=feriasStatus();
@@ -731,9 +720,15 @@ function feriasPanel(){
     return h+'</div></div>';
   }
   var h='<div class="flex" style="gap:16px;margin-bottom:16px;align-items:stretch">';
-  h+=block('🟢 Em gozo (ativas)','c-ok',fs.ativas,function(r){ return '<span>'+esc(r.colaborador||'—')+'</span><span class="muted" style="font-size:11px">até '+fmtD(r.fim)+'</span>'; });
-  h+=block('🟠 Aguardando marcação','c-warn',fs.aguardando.sort(function(a,b){return b.meses-a.meses;}),function(x){ return '<span>'+esc(x.nome)+'</span><span class="muted" style="font-size:11px">'+x.meses+' meses</span>'; });
-  h+=block('🔴 Férias vencidas','c-crit',fs.vencidas.sort(function(a,b){return b.meses-a.meses;}),function(x){ return '<span>'+esc(x.nome)+'</span><span class="chip c-crit">'+x.meses+'m</span>'; });
+  h+=block('🟢 Em gozo (pagas)','c-ok',fs.ativas,function(r){
+    var volta=nextBusinessDay(r.fim);
+    return '<div style="display:flex;flex-direction:column;gap:2px;width:100%">'+
+      '<span style="font-weight:600">'+esc(r.colaborador||'—')+'</span>'+
+      '<span class="muted" style="font-size:11px">Início '+fmtD(r.inicio)+' · Último dia '+fmtD(r.fim)+' · '+(r.dias||'—')+' dias</span>'+
+      '<span class="chip c-info" style="align-self:flex-start;margin-top:2px">↩ Retorno: '+fmtD(volta)+'</span>'+
+      '</div>';
+  });
+  h+=block('🟡 Agendadas (aguardando financeiro)','c-warn',fs.agendadas,function(r){ return '<span>'+esc(r.colaborador||'—')+'</span><span class="muted" style="font-size:11px">vence '+fmtD(r.vencimento)+'</span>'; });
   h+='</div>';
   return h;
 }
@@ -744,7 +739,7 @@ function viewGeneric(t){
   // KPIs
   h+='<div class="kpis">';
   if(t==='rescisoes'){ h+=kpi('Rescisões',rows.length,'registros',true); h+=kpi('Valor total (c/ multa)',money(rows.reduce(function(s,r){return s+rescTotal(r);},0)),'somatório, inclui multa quando houver'); h+=kpi('Pendentes financeiro',rows.filter(function(r){return !isYes(r.financeiro);}).length,'não entregues'); }
-  else if(t==='ferias'){ var fs=feriasStatus(); h+=kpi('Em gozo (ativas)',fs.ativas.length,'de férias hoje',true); h+=kpi('Aguardando marcação',fs.aguardando.length,'≥12 meses sem marcar'); h+=kpi('Vencidas',fs.vencidas.length,'prazo concessivo estourado'); h+=kpi('Valor total',money(sum(rows,'valor')),fs.reg+' lançamentos'); }
+  else if(t==='ferias'){ var fs=feriasStatus(); h+=kpi('Em gozo (pagas)',fs.ativas.length,'de férias hoje e já pagas',true); h+=kpi('Agendadas',fs.agendadas.length,'comprovante ainda não salvo na pasta'); h+=kpi('Valor total',money(sum(rows,'valor')),fs.reg+' lançamentos'); }
   else if(t==='folha'){ h+=kpi('Competências',rows.length,'meses lançados',true); h+=kpi('Total folha',money(sum(rows,'total')),'somatório'); h+=kpi('Gratificações',money(sum(rows,'gratif')),'somatório'); }
   else { h+=kpi('Lançamentos',rows.length,'registros',true); h+=kpi('Valor total',money(sum(rows,'valor')),'somatório'); }
   h+='</div>';
@@ -850,6 +845,14 @@ function cellEditor(t,r,c){
     var yes=isYes(val);
     return '<select onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"'+dis+'><option value="NÃO"'+(!yes?' selected':'')+'>NÃO</option><option value="SIM"'+(yes?' selected':'')+'>SIM</option></select>';
   }
+  if(type==='checkVencido'){
+    /* enquanto não estiver marcado SIM, mostra sempre como vencido (não depende de data) */
+    var yes6=isYes(val);
+    var cls6=yes6?'c-ok':'c-crit';
+    var lbl6=yes6?'✔ Salvo':'Vencido';
+    return '<div class="flex" style="gap:6px;flex-wrap:nowrap"><span class="chip '+cls6+'">'+lbl6+'</span>'+
+      '<select onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"'+dis+'><option value="NÃO"'+(!yes6?' selected':'')+'>NÃO</option><option value="SIM"'+(yes6?' selected':'')+'>SIM</option></select></div>';
+  }
   if(type==='date'){
     var xon=on;
     if(t==='rescisoes'&&key==='desligamento') xon='onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"';
@@ -865,6 +868,9 @@ function cellEditor(t,r,c){
   if(type==='autodays'){
     var d=daysBetween(r.inicio,r.fim); var calc=(d!==null&&d>=0)?(d+1):'';
     return '<input type="number" value="'+esc(val!==''?val:calc)+'" title="auto: '+(calc||'-')+'" '+on+dis+'> <span class="muted" style="font-size:10px">auto:'+(calc||'-')+'</span>';
+  }
+  if(type==='calcDate'){
+    return val ? '<span style="font-weight:600">'+fmtD(val)+'</span> <span class="muted" style="font-size:10px">auto</span>' : '<span class="muted" style="font-size:11px">preencha início e dias</span>';
   }
   return '<input value="'+esc(val)+'" '+on+dis+'>';
 }
@@ -1029,9 +1035,12 @@ function upd(t,id,key,val){
   if((DATECOLS[t]||[]).indexOf(key)>=0 && val && !anoValido(val)){
     showWarn('⚠ ano da data parece incorreto: '+val);
   }
-  // auto férias dias
+  // auto férias: fim = início + (dias-1), usando datas reais (respeita meses de 28/29/30/31 dias)
   r[key]=val;
-  if(t==='ferias'&&(key==='inicio'||key==='fim')){ var d=daysBetween(r.inicio,r.fim); if(d!==null&&d>=0)r.dias=d+1; }
+  if(t==='ferias'&&(key==='inicio'||key==='dias')){
+    var nd=parseInt(r.dias,10);
+    if(r.inicio && nd>0){ r.fim = addDays(r.inicio, nd-1); }
+  }
   if(t==='ferias'&&key==='inicio'){ var vb=subBusinessDays(r.inicio,2); if(vb)r.vencimento=vb; }
   if(t==='rescisoes'&&key==='desligamento'){ var vr=addDays(r.desligamento,10); if(vr)r.vencimento=vr; }
   if(t==='ferias'&&key==='valor'){ var vn=parseFloat(val); if(!isNaN(vn))r.valor=Math.round(vn*100)/100; }
@@ -1040,7 +1049,7 @@ function upd(t,id,key,val){
   // refresh modal/venc chips live for colaboradores (vencimentos, contratuais e desligamento)
   if(t==='colaboradores'&&(COLAB_SUB==='vencimentos'||COLAB_SUB==='contratuais')&&document.getElementById('overlay').className.indexOf('show')>=0){ document.getElementById('modal').innerHTML=colabModal(r); }
   /* atualiza só as células calculadas — nunca a célula que está sendo digitada, senão o campo perde o foco e "pula" no meio da data */
-  if(t==='ferias'&&(key==='inicio'||key==='fim')){ refreshCell('ferias',id,'dias'); }
+  if(t==='ferias'&&(key==='inicio'||key==='dias')){ refreshCell('ferias',id,'fim'); }
   if(t==='ferias'&&key==='inicio'){ refreshCell('ferias',id,'vencimento'); }
   if(t==='rescisoes'&&key==='desligamento'){ refreshCell('rescisoes',id,'vencimento'); refreshCell('rescisoes',id,'pasta'); }
   if(t==='rescisoes'&&key==='tipo_desligamento'){ refreshCell('rescisoes',id,'detalhes'); }
