@@ -325,7 +325,23 @@ function sbPullSilent(cb){
   function step(){
     if(done<keys.length) return;
     // só substitui as tabelas que vieram do banco; mantém local se a chamada falhou
-    for(var k in tmp){ STORE[k]=tmp[k]; }
+    for(var k in tmp){
+      var serverRows=tmp[k];
+      // se existir alteração local ainda não confirmada no Supabase (DIRTY), ela prevalece
+      // sobre o que veio do banco — evita que uma marcação recém-feita "suma" ao recarregar
+      var merged=serverRows.map(function(sr){
+        var dk=dirtyKey(k,sr.id);
+        return DIRTY[dk] ? DIRTY[dk].r : sr;
+      });
+      for(var dkey in DIRTY){
+        if(DIRTY[dkey].t===k){
+          var jaExiste=false;
+          for(var mi=0;mi<merged.length;mi++){ if(merged[mi].id===DIRTY[dkey].r.id){ jaExiste=true; break; } }
+          if(!jaExiste) merged.push(DIRTY[dkey].r);
+        }
+      }
+      STORE[k]=merged;
+    }
     try{ normalizeData(); }catch(e){}
     saveLocal(); if(cb)cb(true);
   }
@@ -446,6 +462,7 @@ function esc(s){ if(s===null||s===undefined)return''; return (''+s).replace(/&/g
 
 /* ================= ESTADO DE UI ================= */
 var TAB = 'dashboard';
+var SORT_STATE = {}; // {rescisoes:{key:'colaborador',dir:1}, ferias:{...}, ...}
 var COLAB_SUB = 'pessoais';
 var COLAB_STATUS = 'ativos';
 var TABS = [
@@ -775,13 +792,43 @@ function viewGeneric(t){
        '<col class="c-fin"><col class="c-pasta"><col class="c-concl"><col class="c-del"></colgroup>';
   }
   h+='<thead><tr>';
-  cols.forEach(function(c){ h+='<th>'+c[1]+'</th>'; });
+  cols.forEach(function(c){ h+='<th style="cursor:pointer;user-select:none" title="Clique para ordenar" onclick="toggleSort(\''+t+'\',\''+c[0]+'\')">'+c[1]+sortArrow(t,c[0])+'</th>'; });
   h+='<th></th></tr></thead><tbody>';
   h+=tableRows(t);
   h+='</tbody></table></div></div>';
   return h;
 }
+/* tipos de coluna que são numéricos (comparação por valor) — os demais (texto/data ISO) comparam bem como string */
+var SORT_NUM_TYPES={moeda:1,num:1,num2:1,int:1,autodays:1};
+function sortRows(t){
+  var st=SORT_STATE[t]; if(!st||!st.key) return;
+  var cols=COLS[t]||[], col=null;
+  for(var i=0;i<cols.length;i++){ if(cols[i][0]===st.key){ col=cols[i]; break; } }
+  var numeric = col && SORT_NUM_TYPES[col[2]];
+  STORE[t].sort(function(a,b){
+    var av=a[st.key], bv=b[st.key];
+    if(numeric){
+      av=(av===''||av===null||av===undefined||isNaN(parseFloat(av)))?-Infinity:parseFloat(av);
+      bv=(bv===''||bv===null||bv===undefined||isNaN(parseFloat(bv)))?-Infinity:parseFloat(bv);
+      var d = av-bv;
+      return st.dir*(d||0);
+    }
+    av=(''+(av===null||av===undefined?'':av)); bv=(''+(bv===null||bv===undefined?'':bv));
+    return st.dir*av.localeCompare(bv,'pt-BR',{numeric:true,sensitivity:'base'});
+  });
+}
+function toggleSort(t,key){
+  var st=SORT_STATE[t];
+  if(st && st.key===key){ st.dir=-st.dir; } else { SORT_STATE[t]={key:key,dir:1}; }
+  render();
+}
+function sortArrow(t,key){
+  var st=SORT_STATE[t];
+  if(!st||st.key!==key) return '';
+  return st.dir===1?' ▲':' ▼';
+}
 function tableRows(t){
+  sortRows(t);
   var cols=COLS[t]; var h='';
   STORE[t].forEach(function(r){
     h+='<tr data-id="'+r.id+'">';
@@ -1066,9 +1113,43 @@ function upd(t,id,key,val){
   if(t==='rescisoes'&&key==='valor'){ refreshCell('rescisoes',id,'valor_total_calc'); }
   if(t==='rescisoes'&&key==='pasta'){ refreshCell('rescisoes',id,'pasta'); }
 }
+function dirtyKey(t,id){ return t+':'+id; }
+function markDirty(t,r){ DIRTY[dirtyKey(t,r.id)]={t:t,r:JSON.parse(JSON.stringify(r))}; saveDirty(); }
+function clearDirty(t,id){ delete DIRTY[dirtyKey(t,id)]; saveDirty(); }
+function saveDirty(){ try{ window.localStorage.setItem('dp_iled_dirty', JSON.stringify(DIRTY)); }catch(e){} }
+function loadDirty(){ try{ var s=window.localStorage.getItem('dp_iled_dirty'); if(s) DIRTY=JSON.parse(s)||{}; }catch(e){} }
+function dirtyCount(){ return Object.keys(DIRTY).length; }
+/* Reenvia ao Supabase qualquer alteração que ficou pendente (ex.: internet caiu, fechou a aba rápido demais).
+   Roda ANTES de qualquer sbPull, pra nunca deixar o servidor "vencer" uma edição local ainda não confirmada. */
+function flushDirty(cb){
+  var keys=Object.keys(DIRTY);
+  if(!keys.length){ if(cb)cb(); return; }
+  var done=0;
+  keys.forEach(function(k){
+    var item=DIRTY[k];
+    var rc=cleanRow(item.t,item.r); rc.atualizado_em=new Date().toISOString();
+    sbUpsert(TBL[item.t],rc,function(ok){
+      if(ok) clearDirty(item.t,item.r.id);
+      done++; if(done===keys.length && cb) cb();
+    });
+  });
+}
 function persist(t,r){
   saveLocal();
-  if(sbConfigured()){ var rc=cleanRow(t,r); rc.atualizado_em=new Date().toISOString(); sbUpsert(TBL[t],rc,function(ok,err){ setDbStatus(ok,ok?'Supabase ✓ salvo':'Falha ao salvar'); if(!ok&&err)console.warn('Supabase',err); }); }
+  if(sbConfigured()){
+    markDirty(t,r);
+    var rc=cleanRow(t,r); rc.atualizado_em=new Date().toISOString();
+    sbUpsert(TBL[t],rc,function(ok,err){
+      if(ok){
+        clearDirty(t,r.id);
+        setDbStatus(true, dirtyCount()? '⚠ '+dirtyCount()+' alteração(ões) pendente(s)' : 'Supabase ✓ salvo');
+      } else {
+        setDbStatus(false,'⚠ Falha ao salvar — mantido só localmente');
+        showWarn('⚠ Não salvou no Supabase (sem conexão ou permissão). A alteração ficou guardada neste computador e será reenviada automaticamente — não feche a aba até reconectar.');
+        if(err)console.warn('Supabase',err);
+      }
+    });
+  }
 }
 function delRow(t,id){
   if(!confirm('Excluir este registro?'))return;
@@ -1299,15 +1380,22 @@ document.getElementById('cfgov').addEventListener('click',function(e){ if(e.targ
 /* ================= BOOT (modo multiusuário) ================= */
 var ADMIN=false;
 loadCfg();
+loadDirty();
 if(sbConfigured()){
-  // Supabase é a fonte única: carrega do banco ao abrir (não semeia local, não empurra)
-  STORE={colaboradores:[],rescisoes:[],ferias:[],folha:[],custos:[]};
+  // Mostra os dados locais IMEDIATAMENTE (nunca fica com a tela em branco esperando a rede).
+  var hadLocal=loadLocal();
+  if(!hadLocal || storeEmpty()){ seedFromSheet(); }
+  migrateIds(); normalizeData();
   render();
-  setDbStatus(true,'Carregando do banco...');
-  sbPullSilent(function(ok){
-    if(ok){ setDbStatus(true,'Supabase conectado'); }
-    else { setDbStatus(false,'Sem conexão — tente Atualizar'); }
-    render();
+  setDbStatus(true, dirtyCount()? '⚠ Reenviando alterações pendentes...' : 'Sincronizando...');
+  // Primeiro reenvia qualquer alteração que ficou pendente da última vez (não sincronizada),
+  // só DEPOIS busca do banco — assim o servidor nunca "apaga" uma edição local ainda não confirmada.
+  flushDirty(function(){
+    sbPullSilent(function(ok){
+      if(ok){ setDbStatus(true, dirtyCount()? '⚠ '+dirtyCount()+' alteração(ões) pendente(s)' : 'Supabase conectado'); }
+      else { setDbStatus(false,'Sem conexão — dados locais mantidos'); }
+      render();
+    });
   });
 } else {
   // modo local (standalone) para testes sem banco
@@ -1315,6 +1403,10 @@ if(sbConfigured()){
   render();
 }
 sbTest(function(){});
+// Avisa antes de fechar a aba se ainda houver alterações não confirmadas no Supabase
+window.addEventListener('beforeunload', function(e){
+  if(dirtyCount()>0){ e.preventDefault(); e.returnValue=''; }
+});
 </script>
 </body>
 </html>
