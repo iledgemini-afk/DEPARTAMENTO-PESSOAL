@@ -61,7 +61,7 @@ nav.tabs button{
   font-weight:600;font-size:13px;border-bottom:2px solid transparent;font-family:inherit;
 }
 nav.tabs button.active{color:var(--txt);border-bottom-color:var(--red)}
-main{padding:20px 22px 60px;max-width:1500px;margin:0 auto}
+main{padding:20px 26px 60px;max-width:none;width:100%}
 .panel,.card{
   background:linear-gradient(180deg,var(--glass-hi) 0%,var(--glass) 100%);
   -webkit-backdrop-filter:blur(22px) saturate(1.5);backdrop-filter:blur(22px) saturate(1.5);
@@ -104,6 +104,28 @@ tr:hover td{background:rgba(255,255,255,.05)}
 td input,td select{border:1px solid transparent;background:transparent;padding:5px 6px;width:100%;min-width:70px;border-radius:6px;color:var(--txt)}
 td input:hover,td select:hover{border-color:var(--line2)}
 td input:focus,td select:focus{border-color:var(--red);background:rgba(255,255,255,.06)}
+
+/* ===== Tabela de Rescisões: larguras fixas por coluna para não espremer nome/tipo ===== */
+#tbl_rescisoes{table-layout:fixed}
+#tbl_rescisoes col.c-empresa{width:7%}
+#tbl_rescisoes col.c-colaborador{width:14%}
+#tbl_rescisoes col.c-clt{width:5%}
+#tbl_rescisoes col.c-deslig{width:8%}
+#tbl_rescisoes col.c-tipo{width:12%}
+#tbl_rescisoes col.c-detalhes{width:10%}
+#tbl_rescisoes col.c-valor{width:7%}
+#tbl_rescisoes col.c-total{width:8%}
+#tbl_rescisoes col.c-venc{width:8%}
+#tbl_rescisoes col.c-fin{width:6%}
+#tbl_rescisoes col.c-pasta{width:11%}
+#tbl_rescisoes col.c-concl{width:5%}
+#tbl_rescisoes col.c-del{width:3%}
+#tbl_rescisoes td,#tbl_rescisoes th{overflow:hidden}
+#tbl_rescisoes td input,#tbl_rescisoes td select{min-width:0}
+#tbl_rescisoes td[data-col="colaborador"] input{font-weight:600}
+#tbl_rescisoes td[data-col="valor_total_calc"] span{font-size:12.5px;font-weight:700;white-space:nowrap}
+#tbl_rescisoes td[data-col="valor"] input{width:100%}
+#tbl_rescisoes td[data-col="pasta"] .flex{flex-wrap:wrap;gap:4px}
 .chip{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
 .c-ok{background:rgba(61,220,132,.16);color:#4fe89a}
 .c-warn{background:rgba(255,176,32,.16);color:#ffc457}
@@ -118,10 +140,14 @@ td input:focus,td select:focus{border-color:var(--red);background:rgba(255,255,2
 .subtabs{display:flex;gap:6px;margin:6px 0 16px;flex-wrap:wrap}
 .subtabs button{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:9px;padding:7px 13px;font-weight:600;font-size:12.5px;cursor:pointer;color:var(--mut);font-family:inherit}
 .subtabs button.active{background:rgba(225,6,0,.14);color:var(--txt);border-color:var(--red);box-shadow:var(--glass-sh)}
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:flex-start;justify-content:center;z-index:100;padding:30px 14px;overflow:auto}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:flex-start;justify-content:center;z-index:100;padding:26px 14px;overflow:auto}
 .overlay.show{display:flex}
-.modal{width:100%;max-width:920px;padding:22px;margin:auto 0}
+.modal{width:96vw;max-width:1700px;padding:28px 32px;margin:auto 0}
 .modal h2{margin:0 0 2px;font-size:18px}
+.modal .flex{gap:18px}
+.modal label.fl{flex:1 1 260px;min-width:240px;font-size:12.5px}
+.modal label.fl input,.modal label.fl select{width:100%;padding:11px 12px;font-size:14.5px}
+.modal .card{padding:20px}
 .xrow{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .close{cursor:pointer;font-size:22px;color:var(--mut);background:none;border:none}
 .searchcard{cursor:pointer;transition:transform .1s}
@@ -242,6 +268,24 @@ function setDbStatus(on,txt){
   var d=document.getElementById('dbdot'), t=document.getElementById('dbtxt');
   d.className='dot '+(on?'on':'off'); t.textContent=txt;
 }
+/* Aviso avulso (ex.: data com ano estranho) — não mexe no status do Supabase,
+   some sozinho depois de alguns segundos. */
+var _warnTimer=null;
+function showWarn(txt){
+  var el=document.getElementById('warnToast');
+  if(!el){
+    el=document.createElement('div');
+    el.id='warnToast';
+    el.style.cssText='position:fixed;top:16px;right:16px;z-index:999;background:rgba(255,176,32,.16);'+
+      'color:#ffc457;border:1px solid rgba(255,176,32,.4);padding:9px 14px;border-radius:10px;'+
+      'font-size:12.5px;font-weight:600;box-shadow:var(--shadow);max-width:320px';
+    document.body.appendChild(el);
+  }
+  el.textContent=txt;
+  el.style.display='block';
+  clearTimeout(_warnTimer);
+  _warnTimer=setTimeout(function(){ el.style.display='none'; },5000);
+}
 function sbTest(cb){
   if(!sbConfigured()){ setDbStatus(false,'Modo local'); return; }
   fetch(CFG.url+'/rest/v1/'+TBL.colaboradores+'?select=id&limit=1',{headers:sbHeaders()})
@@ -288,21 +332,21 @@ function finishPull(tmp){
 /* colunas que precisam de tratamento antes de ir pro banco */
 var DATECOLS={
   colaboradores:['nascimento','admissao','data_desligamento','fim_experiencia','aso','contrato_cp','nr06','nr10','nr11','nr18','nr18_plat','nr35','os_seg'],
-  rescisoes:['admissao','desligamento','vencimento'],
+  rescisoes:['desligamento','vencimento'],
   ferias:['inicio','fim','vencimento','data_financeiro'],
   folha:['competencia'],
   custos:['competencia','vencimento']
 };
 var NUMCOLS={
   colaboradores:['salario','cache','passagem'],
-  rescisoes:['valor'],
+  rescisoes:['valor','valor_multa_rescisoria','valor_complementar','valor_fgts_mensal'],
   ferias:['dias','valor'],
   folha:['qtd','liquido','gratif','total'],
   custos:['valor']
 };
 var ALLOWED={
   colaboradores:['id','empresa','nome','cpf','rg','nascimento','funcao','nivel','telefone','admissao','salario','cache','diaria','passagem','email','endereco','cidade','cep','banco','agencia','tipo_conta','num_conta','pix','mei','contrato','tipo_contrato','data_desligamento','exp_efetivado','fim_experiencia','aso','contrato_cp','nr06','nr10','nr11','nr18','nr18_plat','nr35','os_seg','ficha_epi','nada_consta','emergencia','ativo','atualizado_em'],
-  rescisoes:['id','empresa','colaborador','admissao','desligamento','tipo_desligamento','tipo_doc','valor','vencimento','financeiro','pasta','atualizado_em'],
+  rescisoes:['id','empresa','colaborador','tipo_contrato','desligamento','tipo_desligamento','tipo_doc','multa_rescisoria','valor_multa_rescisoria','valor_complementar','valor_fgts_mensal','parcelado_pj','parcelas_pj','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   ferias:['id','empresa','colaborador','inicio','fim','dias','valor','vencimento','data_financeiro','financeiro','pasta','bloqueado','atualizado_em'],
   folha:['id','empresa','competencia','qtd','liquido','gratif','total','atualizado_em'],
   custos:['id','empresa','competencia','descricao','valor','vencimento','financeiro','atualizado_em']
@@ -622,10 +666,13 @@ function fldSel(c,key,label){
 /* ================= TABELAS GENÉRICAS ================= */
 var COLS = {
   rescisoes:[
-    ['empresa','Empresa','sel'],['colaborador','Colaborador','text'],['admissao','Admissão','date'],
-    ['desligamento','Desligamento','date'],['tipo_desligamento','Tipo desligamento','text'],
-    ['tipo_doc','Tipo documento','doc'],['valor','Valor','num'],['vencimento','Vencimento','date'],
-    ['financeiro','Entregue financeiro','check'],['pasta','Doc na pasta','check']
+    ['empresa','Empresa','sel'],['colaborador','Colaborador','text'],
+    ['tipo_contrato','CLT/PJ','clt'],
+    ['desligamento','Desligamento','date'],['tipo_desligamento','Tipo desligamento','motivo'],
+    ['detalhes','TRCT — Detalhes','recDetail'],
+    ['valor','Valor','moeda'],['valor_total_calc','Valor total (c/ multa)','calcTotal'],
+    ['vencimento','Vencimento (10 dias)','date'],
+    ['financeiro','Entregue financeiro','check'],['pasta','Doc na pasta / pago','pastaCheck'],['bloqueado','Concluído','lock']
   ],
   ferias:[
     ['empresa','Empresa','sel'],['colaborador','Colaborador','text'],['inicio','Início gozo','date'],
@@ -696,7 +743,7 @@ function viewGeneric(t){
   var h='';
   // KPIs
   h+='<div class="kpis">';
-  if(t==='rescisoes'){ h+=kpi('Rescisões',rows.length,'registros',true); h+=kpi('Valor total',money(sum(rows,'valor')),'somatório'); h+=kpi('Pendentes financeiro',rows.filter(function(r){return !isYes(r.financeiro);}).length,'não entregues'); }
+  if(t==='rescisoes'){ h+=kpi('Rescisões',rows.length,'registros',true); h+=kpi('Valor total (c/ multa)',money(rows.reduce(function(s,r){return s+rescTotal(r);},0)),'somatório, inclui multa quando houver'); h+=kpi('Pendentes financeiro',rows.filter(function(r){return !isYes(r.financeiro);}).length,'não entregues'); }
   else if(t==='ferias'){ var fs=feriasStatus(); h+=kpi('Em gozo (ativas)',fs.ativas.length,'de férias hoje',true); h+=kpi('Aguardando marcação',fs.aguardando.length,'≥12 meses sem marcar'); h+=kpi('Vencidas',fs.vencidas.length,'prazo concessivo estourado'); h+=kpi('Valor total',money(sum(rows,'valor')),fs.reg+' lançamentos'); }
   else if(t==='folha'){ h+=kpi('Competências',rows.length,'meses lançados',true); h+=kpi('Total folha',money(sum(rows,'total')),'somatório'); h+=kpi('Gratificações',money(sum(rows,'gratif')),'somatório'); }
   else { h+=kpi('Lançamentos',rows.length,'registros',true); h+=kpi('Valor total',money(sum(rows,'valor')),'somatório'); }
@@ -716,7 +763,13 @@ function viewGeneric(t){
   } else {
     h+='<div class="flex"><input placeholder="🔎 Buscar" oninput="filterTable(this,\''+t+'\')"><button class="btn" onclick="addRow(\''+t+'\')">+ Adicionar</button></div></div>';
   }
-  h+='<div class="tablewrap"><table id="tbl_'+t+'"><thead><tr>';
+  h+='<div class="tablewrap"><table id="tbl_'+t+'">';
+  if(t==='rescisoes'){
+    h+='<colgroup><col class="c-empresa"><col class="c-colaborador"><col class="c-clt"><col class="c-deslig">'+
+       '<col class="c-tipo"><col class="c-detalhes"><col class="c-valor"><col class="c-total"><col class="c-venc">'+
+       '<col class="c-fin"><col class="c-pasta"><col class="c-concl"><col class="c-del"></colgroup>';
+  }
+  h+='<thead><tr>';
   cols.forEach(function(c){ h+='<th>'+c[1]+'</th>'; });
   h+='<th></th></tr></thead><tbody>';
   h+=tableRows(t);
@@ -727,20 +780,31 @@ function tableRows(t){
   var cols=COLS[t]; var h='';
   STORE[t].forEach(function(r){
     h+='<tr data-id="'+r.id+'">';
-    cols.forEach(function(c){ h+='<td>'+cellEditor(t,r,c)+'</td>'; });
+    cols.forEach(function(c){ h+='<td data-col="'+c[0]+'">'+cellEditor(t,r,c)+'</td>'; });
     h+='<td><button class="btn ghost sm" onclick="delRow(\''+t+'\',\''+r.id+'\')">🗑</button></td>';
     h+='</tr>';
   });
   return h;
 }
+/* Atualiza só a célula derivada indicada (nunca a célula que o usuário está digitando),
+   pra não perder o foco/cursor no meio da digitação de uma data. */
+function refreshCell(t,id,key){
+  var cols=COLS[t]||[], col=null;
+  for(var i=0;i<cols.length;i++){ if(cols[i][0]===key){ col=cols[i]; break; } }
+  if(!col) return;
+  var r=find(t,id); if(!r) return;
+  var tb=document.getElementById('tbl_'+t); if(!tb) return;
+  var td=tb.querySelector('tr[data-id="'+id+'"] td[data-col="'+key+'"]');
+  if(td) td.innerHTML=cellEditor(t,r,col);
+}
 function cellEditor(t,r,c){
   var key=c[0], type=c[2], val=r[key]===null||r[key]===undefined?'':r[key];
-  var locked = (t==='ferias' && isYes(r.bloqueado) && type!=='lock');
+  var locked = ((t==='ferias'||t==='rescisoes') && isYes(r.bloqueado) && type!=='lock');
   var dis = locked?' disabled':'';
   var on='onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"';
   if(type==='lock'){
     var yes=isYes(val);
-    return '<button class="btn '+(yes?'save saved':'ghost')+' sm" title="'+(yes?'Concluído — clique para destravar':'Marcar concluído e travar edição')+'" onclick="toggleLock(\''+t+'\',\''+r.id+'\')">'+(yes?'🔒 Travado':'🔓 Abrir/Travar')+'</button>';
+    return '<button class="btn '+(yes?'save saved':'ghost')+' sm" title="'+(yes?'Travado — clique no lápis para editar':'Marcar concluído e travar edição')+'" onclick="toggleLock(\''+t+'\',\''+r.id+'\')">'+(yes?'🔒 Travado':'✏️ Editar')+'</button>';
   }
   if(type==='sel'){
     var emps=['ILED','ILED SP','NEW ILED','ILED SÃO PAULO','RED'];var opts='<option value="">—</option>';var f=false;
@@ -748,25 +812,181 @@ function cellEditor(t,r,c){
     if(val&&!f)opts+='<option selected>'+esc(val)+'</option>';
     return '<select '+on+dis+'>'+opts+'</select>';
   }
-  if(type==='doc'){
-    var docs=['TRCT','FGTS MENSAL','FGTS RESCISÓRIO'];var opts='<option value="">—</option>';var f=false;
-    docs.forEach(function(e){var s=(e===val)?' selected':'';if(s)f=true;opts+='<option'+s+'>'+e+'</option>';});
+  if(type==='motivo'){
+    var mots=['PEDIDO DE DEMISSÃO','DISPENSA PELA EMPRESA','ACORDO','ACORDO PJ','TÉRMINO DE CONTRATO'];var opts='<option value="">—</option>';var f=false;
+    mots.forEach(function(e){var s=(e===val)?' selected':'';if(s)f=true;opts+='<option'+s+'>'+e+'</option>';});
     if(val&&!f)opts+='<option selected>'+esc(val)+'</option>';
     return '<select '+on+dis+'>'+opts+'</select>';
+  }
+  if(type==='clt'){
+    var ctopts=['CLT','PJ'];var oh='<option value="">—</option>';var fct=false;
+    ctopts.forEach(function(e){var s=(e===val)?' selected':'';if(s)fct=true;oh+='<option'+s+'>'+e+'</option>';});
+    if(val&&!fct)oh+='<option selected>'+esc(val)+'</option>';
+    return '<select '+on+dis+'>'+oh+'</select>';
+  }
+  if(type==='calcTotal'){
+    return '<span style="font-weight:700">'+money(rescTotal(r))+'</span>';
+  }
+  if(type==='recDetail'){
+    var bits=[];
+    if(isYes(r.multa_rescisoria)) bits.push('Multa: '+money(r.valor_multa_rescisoria||0));
+    if(num(r.valor_fgts_mensal)) bits.push('FGTS mensal: '+money(r.valor_fgts_mensal));
+    if((''+(r.tipo_desligamento||'')).toUpperCase()==='ACORDO PJ' && isYes(r.parcelado_pj)){ var n=(parseParcelas(r.parcelas_pj)||[]).length; bits.push(n+'x parcelado'); }
+    var badge = bits.length ? '<div class="muted" style="font-size:10px;margin-top:3px">'+esc(bits.join(' · '))+'</div>' : '';
+    return '<button class="btn ghost sm" onclick="openResc(\''+t+'\',\''+r.id+'\')">📋 Detalhes</button>'+badge;
+  }
+  if(type==='pastaCheck'){
+    var pYes2=isYes(val);
+    var ddp=daysBetween(today(),(''+(r.vencimento||'')).slice(0,10));
+    var pCls,pLbl;
+    if(pYes2){ pCls='c-ok'; pLbl='✔ Pago'; }
+    else if(ddp===null){ pCls='c-mut'; pLbl='—'; }
+    else if(ddp<0){ pCls='c-crit'; pLbl='Vencido '+(-ddp)+'d'; }
+    else { pCls='c-ok'; pLbl='Vence em '+ddp+'d'; }
+    return '<div class="flex" style="gap:6px;flex-wrap:nowrap"><span class="chip '+pCls+'">'+pLbl+'</span>'+
+      '<select onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"'+dis+'><option value="NÃO"'+(!pYes2?' selected':'')+'>NÃO</option><option value="SIM"'+(pYes2?' selected':'')+'>SIM</option></select></div>';
   }
   if(type==='check'){
     var yes=isYes(val);
     return '<select onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"'+dis+'><option value="NÃO"'+(!yes?' selected':'')+'>NÃO</option><option value="SIM"'+(yes?' selected':'')+'>SIM</option></select>';
   }
-  if(type==='date') return '<input type="date" value="'+esc((''+val).slice(0,10))+'" '+on+dis+'>';
+  if(type==='date'){
+    var xon=on;
+    if(t==='rescisoes'&&key==='desligamento') xon='onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"';
+    return '<input type="date" value="'+esc((''+val).slice(0,10))+'" '+xon+dis+'>';
+  }
   if(type==='month'){ var mv=(''+val).slice(0,7); return '<input type="month" value="'+esc(mv)+'" onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value?this.value+\'-01\':\'\')"'+dis+'>'; }
-  if(type==='num2'){ var nv=(val===''||isNaN(parseFloat(val)))?'':parseFloat(val).toFixed(2); return '<input type="number" step="0.01" value="'+esc(nv)+'" '+on+dis+'>'; }
+  if(type==='moeda'){
+    var nv=(val===''||isNaN(parseFloat(val)))?'':parseFloat(val).toFixed(2);
+    return '<span class="muted" style="font-size:12px">R$</span> <input type="number" step="0.01" min="0" value="'+esc(nv)+'" '+on+dis+' style="width:calc(100% - 26px)">';
+  }
+  if(type==='num2'){ var nv2=(val===''||isNaN(parseFloat(val)))?'':parseFloat(val).toFixed(2); return '<input type="number" step="0.01" value="'+esc(nv2)+'" '+on+dis+'>'; }
   if(type==='num'||type==='int') return '<input type="number" step="'+(type==='int'?'1':'0.01')+'" value="'+esc(val)+'" '+on+dis+'>';
   if(type==='autodays'){
     var d=daysBetween(r.inicio,r.fim); var calc=(d!==null&&d>=0)?(d+1):'';
     return '<input type="number" value="'+esc(val!==''?val:calc)+'" title="auto: '+(calc||'-')+'" '+on+dis+'> <span class="muted" style="font-size:10px">auto:'+(calc||'-')+'</span>';
   }
   return '<input value="'+esc(val)+'" '+on+dis+'>';
+}
+function parseParcelas(s){
+  if(!s) return [];
+  if(typeof s==='object') return s;
+  try{ var a=JSON.parse(s); return Array.isArray(a)?a:[]; }catch(e){ return []; }
+}
+function openResc(t,id){
+  var r=find(t,id); if(!r)return;
+  document.getElementById('modal').innerHTML=rescModal(r);
+  document.getElementById('overlay').className='overlay show';
+}
+function updResc(id,key,val){
+  var r=find('rescisoes',id); if(!r)return;
+  r[key]=val;
+  saveLocal(); persist('rescisoes',r);
+  document.getElementById('modal').innerHTML=rescModal(r);
+  refreshCell('rescisoes',id,'valor_total_calc');
+  refreshCell('rescisoes',id,'detalhes');
+  if(key==='valor') refreshCell('rescisoes',id,'valor');
+}
+function dividirParcelasIgual(id){
+  var r=find('rescisoes',id); if(!r)return;
+  var total=num(r.valor);
+  var arr=parseParcelas(r.parcelas_pj);
+  if(!total||!arr.length)return;
+  var n=arr.length;
+  var base=Math.floor((total/n)*100)/100;
+  var soma=0;
+  arr.forEach(function(p,i){
+    p.valor = (i<n-1) ? base : Math.round((total-soma)*100)/100;
+    soma += p.valor;
+  });
+  r.parcelas_pj=JSON.stringify(arr);
+  saveLocal(); persist('rescisoes',r);
+  document.getElementById('modal').innerHTML=rescModal(r);
+  refreshCell('rescisoes',id,'detalhes');
+}
+function setParcelaQtd(id,n){
+  var r=find('rescisoes',id); if(!r)return;
+  n=Math.max(0,parseInt(n)||0);
+  var arr=parseParcelas(r.parcelas_pj);
+  while(arr.length<n) arr.push({valor:'',vencimento:''});
+  while(arr.length>n) arr.pop();
+  r.parcelas_pj=JSON.stringify(arr);
+  saveLocal(); persist('rescisoes',r);
+  document.getElementById('modal').innerHTML=rescModal(r);
+  refreshCell('rescisoes',id,'detalhes');
+}
+function updParcela(id,idx,key,val){
+  var r=find('rescisoes',id); if(!r)return;
+  var arr=parseParcelas(r.parcelas_pj);
+  if(!arr[idx])arr[idx]={valor:'',vencimento:''};
+  arr[idx][key]=key==='valor'?(val===''?'':parseFloat((''+val).replace(',','.'))):val;
+  r.parcelas_pj=JSON.stringify(arr);
+  saveLocal(); persist('rescisoes',r);
+}
+function rescModal(r){
+  var locked=isYes(r.bloqueado);
+  var dis=locked?' disabled':'';
+  var h='<div class="xrow"><h2>'+esc(r.colaborador||'Rescisão')+'</h2><button class="close" onclick="closeOv()">×</button></div>';
+  h+='<div class="muted" style="margin-bottom:10px;font-size:12px">'+esc(r.empresa||'')+' · Desligamento: '+fmtD(r.desligamento)+' · '+esc(r.tipo_desligamento||'—')+'</div>';
+
+  var valorResc=num(r.valor);
+  h+='<div class="card" style="margin-bottom:12px"><div class="section-title">Valor da rescisão</div>';
+  h+='<div class="section-sub">Este é o valor devido ao colaborador — em caso de Acordo PJ, é ele que será dividido em parcelas (não a multa).</div>';
+  h+='<label class="fl" style="max-width:260px">Valor da rescisão<input type="number" step="0.01" min="0" value="'+esc(r.valor||'')+'" onchange="updResc(\''+r.id+'\',\'valor\',this.value)"'+dis+'></label>';
+  h+='</div>';
+
+  var mYes=isYes(r.multa_rescisoria);
+  h+='<div class="card" style="margin-bottom:12px"><div class="section-title">TRCT — Multa rescisória, complementares e FGTS mensal</div>';
+  h+='<div class="flex"><label class="fl">Tem multa rescisória?<select onchange="updResc(\''+r.id+'\',\'multa_rescisoria\',this.value)"'+dis+'>'+
+     '<option value="NÃO"'+(!mYes?' selected':'')+'>NÃO</option><option value="SIM"'+(mYes?' selected':'')+'>SIM</option></select></label>';
+  if(mYes){
+    h+='<label class="fl">Valor da multa (custo deste colaborador)<input type="number" step="0.01" min="0" value="'+esc(r.valor_multa_rescisoria||'')+'" onchange="updResc(\''+r.id+'\',\'valor_multa_rescisoria\',this.value)"'+dis+'></label>';
+  }
+  h+='</div>';
+  h+='<div class="flex" style="margin-top:8px">';
+  h+='<label class="fl">Valores complementares (opcional)<input type="number" step="0.01" min="0" value="'+esc(r.valor_complementar||'')+'" onchange="updResc(\''+r.id+'\',\'valor_complementar\',this.value)"'+dis+'></label>';
+  h+='<label class="fl">FGTS mensal (caso tenha)<input type="number" step="0.01" min="0" value="'+esc(r.valor_fgts_mensal||'')+'" onchange="updResc(\''+r.id+'\',\'valor_fgts_mensal\',this.value)"'+dis+'></label>';
+  h+='</div>';
+  if(mYes){
+    h+='<div class="muted" style="font-size:12px;margin-top:10px">A multa é somada automaticamente ao valor total da rescisão, pois é um valor devido ao colaborador. Valor total: <b>'+money(rescTotal(r))+'</b></div>';
+  }
+  h+='</div>';
+
+  if((''+(r.tipo_desligamento||'')).toUpperCase()==='ACORDO PJ'){
+    var pYes=isYes(r.parcelado_pj);
+    var parcelas=parseParcelas(r.parcelas_pj);
+    h+='<div class="card"><div class="section-title">Acordo PJ — parcelamento</div>';
+    if(!valorResc){
+      h+='<div class="muted" style="font-size:12.5px">⚠ Preencha o <b>valor da rescisão</b> acima antes de configurar o parcelamento.</div>';
+    } else {
+      h+='<div class="muted" style="font-size:12.5px;margin-bottom:8px">Valor da rescisão a ser parcelado: <b>'+money(valorResc)+'</b></div>';
+      h+='<div class="flex"><label class="fl">Foi parcelado?<select onchange="updResc(\''+r.id+'\',\'parcelado_pj\',this.value)"'+dis+'>'+
+         '<option value="NÃO"'+(!pYes?' selected':'')+'>NÃO</option><option value="SIM"'+(pYes?' selected':'')+'>SIM</option></select></label>';
+      if(pYes){
+        h+='<label class="fl">Quantidade de parcelas<input type="number" min="1" step="1" value="'+(parcelas.length||'')+'" onchange="setParcelaQtd(\''+r.id+'\',this.value)"'+dis+'></label>';
+        if(parcelas.length){
+          h+='<label class="fl" style="justify-content:flex-end"><span>&nbsp;</span><button class="btn ghost sm" onclick="dividirParcelasIgual(\''+r.id+'\')"'+dis+'>Dividir valor igualmente</button></label>';
+        }
+      }
+      h+='</div>';
+      if(pYes && parcelas.length){
+        h+='<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Parcela</th><th>Valor</th><th>Vencimento</th></tr></thead><tbody>';
+        parcelas.forEach(function(p,i){
+          h+='<tr><td>'+(i+1)+'ª</td>'+
+             '<td><input type="number" step="0.01" min="0" value="'+esc(p.valor||'')+'" onchange="updParcela(\''+r.id+'\',\''+i+'\',\'valor\',this.value)"'+dis+'></td>'+
+             '<td><input type="date" value="'+esc((''+(p.vencimento||'')).slice(0,10))+'" onchange="updParcela(\''+r.id+'\',\''+i+'\',\'vencimento\',this.value)"'+dis+'></td></tr>';
+        });
+        var totalP=parcelas.reduce(function(s,p){return s+(parseFloat(p.valor)||0);},0);
+        var difP=Math.round((totalP-valorResc)*100)/100;
+        var okP=Math.abs(difP)<0.01;
+        h+='</tbody></table></div><div style="font-size:12px;margin-top:6px" class="'+(okP?'muted':'')+'">Total parcelado: <b>'+money(totalP)+'</b>'+
+           (okP?' <span class="chip c-ok" style="margin-left:6px">bate com o valor da rescisão</span>':' <span class="chip c-crit" style="margin-left:6px">'+(difP>0?'excede '+money(difP):'falta '+money(-difP))+'</span>')+'</div>';
+      }
+    }
+    h+='</div>';
+  }
+
+  return h;
 }
 function toggleLock(t,id){
   var r=find(t,id); if(!r)return;
@@ -799,7 +1019,7 @@ function limparFerFiltro(){
   ['ferFrom','ferTo','ferName'].forEach(function(id){ var e=document.getElementById(id); if(e)e.value=''; });
   filterFerias();
 }
-function addRow(t){ var r={id:uid()}; COLS[t].forEach(function(c){r[c[0]]='';}); STORE[t].push(r); persist(t,r); render(); }
+function addRow(t){ var r={id:uid()}; COLS[t].forEach(function(c){r[c[0]]='';}); if(t==='rescisoes')r.tipo_doc='TRCT'; STORE[t].push(r); persist(t,r); render(); }
 
 /* ================= CRUD CORE ================= */
 function find(t,id){ var a=STORE[t]; for(var i=0;i<a.length;i++){ if(a[i].id===id)return a[i]; } return null; }
@@ -807,18 +1027,25 @@ function upd(t,id,key,val){
   var r=find(t,id); if(!r)return;
   // aviso de ano irreal em campos de data
   if((DATECOLS[t]||[]).indexOf(key)>=0 && val && !anoValido(val)){
-    setDbStatus(false,'⚠ ano da data parece incorreto');
+    showWarn('⚠ ano da data parece incorreto: '+val);
   }
   // auto férias dias
   r[key]=val;
   if(t==='ferias'&&(key==='inicio'||key==='fim')){ var d=daysBetween(r.inicio,r.fim); if(d!==null&&d>=0)r.dias=d+1; }
   if(t==='ferias'&&key==='inicio'){ var vb=subBusinessDays(r.inicio,2); if(vb)r.vencimento=vb; }
+  if(t==='rescisoes'&&key==='desligamento'){ var vr=addDays(r.desligamento,10); if(vr)r.vencimento=vr; }
   if(t==='ferias'&&key==='valor'){ var vn=parseFloat(val); if(!isNaN(vn))r.valor=Math.round(vn*100)/100; }
   if(t==='folha'||t==='custos'){ if(key==='liquido'||key==='gratif'){ r.total=num(r.liquido)+num(r.gratif); } }
   saveLocal(); persist(t,r);
   // refresh modal/venc chips live for colaboradores (vencimentos, contratuais e desligamento)
   if(t==='colaboradores'&&(COLAB_SUB==='vencimentos'||COLAB_SUB==='contratuais')&&document.getElementById('overlay').className.indexOf('show')>=0){ document.getElementById('modal').innerHTML=colabModal(r); }
-  if(t==='ferias'&&(key==='inicio'||key==='valor'||key==='fim')){ var tb=document.getElementById('tbl_ferias'); if(tb){ var body=tb.querySelector('tbody'); if(body)body.innerHTML=tableRows('ferias'); } }
+  /* atualiza só as células calculadas — nunca a célula que está sendo digitada, senão o campo perde o foco e "pula" no meio da data */
+  if(t==='ferias'&&(key==='inicio'||key==='fim')){ refreshCell('ferias',id,'dias'); }
+  if(t==='ferias'&&key==='inicio'){ refreshCell('ferias',id,'vencimento'); }
+  if(t==='rescisoes'&&key==='desligamento'){ refreshCell('rescisoes',id,'vencimento'); refreshCell('rescisoes',id,'pasta'); }
+  if(t==='rescisoes'&&key==='tipo_desligamento'){ refreshCell('rescisoes',id,'detalhes'); }
+  if(t==='rescisoes'&&key==='valor'){ refreshCell('rescisoes',id,'valor_total_calc'); }
+  if(t==='rescisoes'&&key==='pasta'){ refreshCell('rescisoes',id,'pasta'); }
 }
 function persist(t,r){
   saveLocal();
@@ -835,6 +1062,8 @@ function delRow(t,id){
 /* ================= KPI / DASHBOARD ================= */
 function kpi(eye,big,desc,hero){ return '<div class="card kpi'+(hero?' hero':'')+'"><div class="eye">'+eye+'</div><div class="big">'+big+'</div><div class="desc">'+esc(desc||'')+'</div></div>'; }
 function sum(rows,key){ var s=0; rows.forEach(function(r){s+=num(r[key]);}); return s; }
+/* valor total da rescisão = valor + multa rescisória (quando houver), pois a multa é valor devido ao colaborador */
+function rescTotal(r){ var v=num(r.valor); if(isYes(r.multa_rescisoria)) v+=num(r.valor_multa_rescisoria); return v; }
 function isYes(v){ v=(''+(v||'')).toLowerCase(); return v==='sim'||v==='ok'||v==='true'||v==='1'||v==='x'; }
 function mesNome(m){ return ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][m]; }
 
@@ -859,7 +1088,7 @@ function viewDashboard(){
   h+=kpi('Custo total folha',money(sum(folha,'total')),'no período',true);
   h+=kpi('Custos adicionais',money(sum(custos,'valor')),'no período');
   h+=kpi('Férias (valor)',money(sum(fer,'valor')),fer.length+' lançamentos');
-  h+=kpi('Rescisões (valor)',money(sum(resc,'valor')),resc.length+' no período');
+  h+=kpi('Rescisões (valor, c/ multa)',money(resc.reduce(function(s,r){return s+rescTotal(r);},0)),resc.length+' no período');
   h+=kpi('Colaboradores ativos',colabAtivos,DASH_EMP||'total cadastrado');
   h+='</div>';
 
@@ -914,7 +1143,7 @@ function drawCharts(){
   // fer vs resc
   var months={};
   inRange(STORE.ferias,'inicio').forEach(function(r){var m=monthKey(r.inicio);months[m]=months[m]||{f:0,r:0};months[m].f+=num(r.valor);});
-  inRange(STORE.rescisoes,'desligamento').forEach(function(r){var m=monthKey(r.desligamento);months[m]=months[m]||{f:0,r:0};months[m].r+=num(r.valor);});
+  inRange(STORE.rescisoes,'desligamento').forEach(function(r){var m=monthKey(r.desligamento);months[m]=months[m]||{f:0,r:0};months[m].r+=rescTotal(r);});
   var mk2=Object.keys(months).sort();
   mk('chFerResc',{type:'line',data:{labels:mk2,datasets:[
     {label:'Férias',data:mk2.map(function(m){return months[m].f;}),borderColor:'#1a8f52',tension:.3},
