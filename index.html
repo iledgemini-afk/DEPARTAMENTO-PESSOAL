@@ -136,7 +136,19 @@ td input:focus,td select:focus{border-color:var(--red);background:rgba(255,255,2
 .section-sub{color:var(--mut);font-size:12px;margin-bottom:14px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-.formgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.formgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px 18px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-dow{text-align:center;font-weight:700;font-size:11px;color:var(--mut);padding:4px 0;text-transform:uppercase}
+.cal-cell{min-height:100px;border:1px solid var(--line);border-radius:10px;padding:6px;background:rgba(255,255,255,.02);overflow:auto}
+.cal-cell.cal-empty{background:transparent;border-color:transparent}
+.cal-daynum{font-weight:700;font-size:12.5px;margin-bottom:4px}
+.cal-today{border-color:var(--red);box-shadow:0 0 0 1px var(--red) inset}
+.cal-q5{background:rgba(255,193,7,.16);border-color:var(--amber)}
+.cal-event{font-size:10.5px;line-height:1.3;background:rgba(255,255,255,.06);border-radius:6px;padding:2px 5px;margin-bottom:3px;word-break:break-word}
+.cal-event-paid{background:rgba(61,220,132,.22);color:var(--grn);font-weight:600}
+.cal-event-late{background:rgba(225,6,0,.2);color:var(--red2)}
+.cal-event-warn{background:rgba(255,176,32,.22);color:var(--amber)}
+@media(max-width:760px){ .cal-cell{min-height:70px;font-size:11px} .cal-event{font-size:9.5px} }
 .subtabs{display:flex;gap:6px;margin:6px 0 16px;flex-wrap:wrap}
 .subtabs button{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:9px;padding:7px 13px;font-weight:600;font-size:12.5px;cursor:pointer;color:var(--mut);font-family:inherit}
 .subtabs button.active{background:rgba(225,6,0,.14);color:var(--txt);border-color:var(--red);box-shadow:var(--glass-sh)}
@@ -476,6 +488,7 @@ function vencStatus(dateIso){
   var dd = daysBetween(today(), (''+dateIso).slice(0,10));
   if(dd===null) return {cls:'c-mut',label:'—'};
   if(dd<0) return {cls:'c-crit',label:'Vencido '+(-dd)+'d'};
+  if(dd===0) return {cls:'c-warn',label:'Vence hoje'};
   if(dd<=30) return {cls:'c-warn',label:'Vence em '+dd+'d'};
   return {cls:'c-ok',label:'OK ('+dd+'d)'};
 }
@@ -484,15 +497,20 @@ function esc(s){ if(s===null||s===undefined)return''; return (''+s).replace(/&/g
 
 /* ================= ESTADO DE UI ================= */
 var TAB = 'dashboard';
+var SORT_STATE = {}; // {rescisoes:{key:'colaborador',dir:1}, ferias:{...}, ...}
 var COLAB_SUB = 'pessoais';
 var COLAB_STATUS = 'ativos';
+var CAL_TODAY = new Date();
+var CAL_YEAR = CAL_TODAY.getFullYear();
+var CAL_MONTH = CAL_TODAY.getMonth(); // 0-indexado
 var TABS = [
   {id:'dashboard',label:'📊 Dashboard'},
   {id:'colaboradores',label:'👥 Colaboradores'},
   {id:'rescisoes',label:'📄 Rescisões'},
   {id:'ferias',label:'🌴 Férias'},
   {id:'folha',label:'💰 Folha de Pagamento'},
-  {id:'custos',label:'➕ Custos Adicionais'}
+  {id:'custos',label:'➕ Custos Adicionais'},
+  {id:'calendario',label:'📅 Calendário'}
 ];
 
 function renderTabs(){
@@ -513,7 +531,98 @@ function render(){
   else if(TAB==='ferias') v.innerHTML=viewGeneric('ferias');
   else if(TAB==='folha') v.innerHTML=viewGeneric('folha');
   else if(TAB==='custos') v.innerHTML=viewGeneric('custos');
+  else if(TAB==='calendario') v.innerHTML=viewCalendario();
   if(TAB==='dashboard') drawCharts();
+}
+
+/* ================= CALENDÁRIO DE VENCIMENTOS ================= */
+function pad2(n){ n=''+n; return n.length<2?'0'+n:n; }
+/* 5º dia útil do mês, contando sábado como dia útil (só domingo não conta) */
+function quintoDiaUtil(y,m){
+  var d=new Date(Date.UTC(y,m,1)), count=0;
+  while(true){
+    if(d.getUTCDay()!==0){ count++; if(count===5) break; }
+    d.setUTCDate(d.getUTCDate()+1);
+  }
+  return d.toISOString().slice(0,10);
+}
+function calendarEventsForMonth(){
+  var map={}, tdy=today();
+  function statusCls(vencIso,paid){
+    if(paid) return 'cal-event-paid';
+    var dd=daysBetween(tdy,(''+(vencIso||'')).slice(0,10));
+    if(dd===null) return '';
+    if(dd<0) return 'cal-event-late';
+    if(dd===0) return 'cal-event-warn';
+    return '';
+  }
+  function add(iso,label,cls){
+    if(!iso) return; iso=(''+iso).slice(0,10); if(!isISODate(iso)) return;
+    if(!map[iso]) map[iso]=[]; map[iso].push({label:label,cls:cls||''});
+  }
+  (STORE.ferias||[]).forEach(function(r){ if(!r.colaborador&&!r.vencimento) return; var paid=isYes(r.financeiro); add(r.vencimento,'FÉRIAS - '+(r.colaborador||'—')+' - '+(money(r.valor)||'—'),statusCls(r.vencimento,paid)); });
+  (STORE.rescisoes||[]).forEach(function(r){
+    if(!r.colaborador&&!r.vencimento) return;
+    var pinfo=parcelasInfo(r);
+    if(pinfo){
+      /* parcelado (Acordo PJ): uma entrada por parcela, cada uma com seu valor e vencimento */
+      parseParcelas(r.parcelas_pj).forEach(function(p,i){
+        add(p.vencimento,'TRCT (parcela '+(i+1)+'/'+pinfo.total+') - '+(r.colaborador||'—')+' - '+(money(p.valor)||'—'),statusCls(p.vencimento,isYes(p.pago)));
+      });
+      /* a multa não parcela — vence sempre 10 dias após o desligamento (mesma data de r.vencimento) */
+      if(isYes(r.multa_rescisoria) && num(r.valor_multa_rescisoria)>0){
+        add(r.vencimento,'MULTA RESCISÓRIA - '+(r.colaborador||'—')+' - '+(money(r.valor_multa_rescisoria)||'—'),statusCls(r.vencimento,false));
+      }
+    } else {
+      add(r.vencimento,(r.tipo_doc||'TRCT')+' - '+(r.colaborador||'—')+' - '+(money(rescTotal(r))||'—'),statusCls(r.vencimento,isYes(r.pasta)));
+    }
+  });
+  (STORE.custos||[]).forEach(function(r){ if(!r.vencimento) return; var paid=!!(''+(r.financeiro||'')).trim(); add(r.vencimento,'CUSTO'+(r.descricao?(' - '+r.descricao):'')+' - '+(money(r.valor)||'—'),statusCls(r.vencimento,paid)); });
+  return map;
+}
+function calNav(delta){
+  CAL_MONTH+=delta;
+  if(CAL_MONTH<0){ CAL_MONTH=11; CAL_YEAR--; }
+  if(CAL_MONTH>11){ CAL_MONTH=0; CAL_YEAR++; }
+  render();
+}
+function calToday(){ CAL_YEAR=CAL_TODAY.getFullYear(); CAL_MONTH=CAL_TODAY.getMonth(); render(); }
+function viewCalendario(){
+  var monthNames=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  var y=CAL_YEAR, m=CAL_MONTH;
+  var h='';
+  h+='<div class="toolbar" style="justify-content:space-between">';
+  h+='<div class="flex" style="gap:10px;align-items:center">';
+  h+='<button class="btn ghost sm" onclick="calNav(-1)">◀</button>';
+  h+='<h2 style="margin:0;min-width:200px;text-align:center">'+monthNames[m]+' de '+y+'</h2>';
+  h+='<button class="btn ghost sm" onclick="calNav(1)">▶</button>';
+  h+='</div>';
+  h+='<button class="btn ghost sm" onclick="calToday()">Hoje</button>';
+  h+='</div>';
+  h+='<div class="muted" style="font-size:12px;margin-bottom:12px">🟨 Dia grifado = 5º dia útil do mês (contando sábado como dia útil, só domingo não conta). <span style="color:var(--grn)">🟩 Verde</span> = pagamento OK · <span style="color:var(--amber)">🟧 Âmbar</span> = vence hoje · <span style="color:var(--red2)">🟥 Vermelho</span> = vencido sem pagar. Rescisão parcelada (Acordo PJ) aparece com uma entrada por parcela + a multa separada (ela não parcela — vence sempre 10 dias após o desligamento).</div>';
+
+  var q5=quintoDiaUtil(y,m);
+  var events=calendarEventsForMonth();
+  var firstDow=new Date(Date.UTC(y,m,1)).getUTCDay();
+  var daysInMonth=new Date(Date.UTC(y,m+1,0)).getUTCDate();
+  var tdy=today();
+
+  h+='<div class="cal-grid">';
+  ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].forEach(function(d){ h+='<div class="cal-dow">'+d+'</div>'; });
+  for(var i=0;i<firstDow;i++) h+='<div class="cal-cell cal-empty"></div>';
+  for(var day=1;day<=daysInMonth;day++){
+    var iso=y+'-'+pad2(m+1)+'-'+pad2(day);
+    var isQ5=(iso===q5), isToday=(iso===tdy);
+    h+='<div class="cal-cell'+(isQ5?' cal-q5':'')+(isToday?' cal-today':'')+'">';
+    h+='<div class="cal-daynum">'+day+(isQ5?' <span class="chip c-warn" style="padding:1px 5px;font-size:9px;margin-left:3px">5º dia útil</span>':'')+'</div>';
+    var evs=events[iso];
+    if(evs) evs.forEach(function(e){ h+='<div class="cal-event'+(e.cls?(' '+e.cls):'')+'">'+esc(e.label)+'</div>'; });
+    h+='</div>';
+  }
+  var rem=(7-((firstDow+daysInMonth)%7))%7;
+  for(var j=0;j<rem;j++) h+='<div class="cal-cell cal-empty"></div>';
+  h+='</div>';
+  return h;
 }
 
 /* ================= COLABORADORES ================= */
@@ -622,37 +731,47 @@ function colabModal(c){
   h+='</div>';
 
   if(COLAB_SUB==='pessoais'){
-    h+='<div class="formgrid">';
+    h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Identificação</div><div class="formgrid">';
     h+=fldSel(c,'empresa','Empresa');
     h+=fld(c,'nome','Nome');
     h+=fld(c,'cpf','CPF');
     h+=fld(c,'rg','RG');
     h+=fld(c,'nascimento','Data de nascimento','date');
+    h+='</div></div>';
+    h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Contato</div><div class="formgrid">';
     h+=fld(c,'telefone','Telefone');
     h+=fld(c,'email','E-mail');
+    h+=fld(c,'emergencia','Contato de emergência');
+    h+='</div></div>';
+    h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Endereço</div><div class="formgrid">';
     h+=fld(c,'endereco','Endereço');
     h+=fld(c,'cidade','Cidade');
     h+=fld(c,'cep','CEP');
+    h+='</div></div>';
+    h+='<div class="card"><div class="section-title">Financeiro</div><div class="formgrid">';
     h+=fld(c,'pix','PIX');
-    h+=fld(c,'emergencia','Contato de emergência');
-    h+='</div>';
+    h+='</div></div>';
   } else if(COLAB_SUB==='contratuais'){
-    h+='<div class="formgrid">';
+    h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Vínculo</div><div class="formgrid">';
     h+=fld(c,'admissao','Data de admissão','date');
     h+=fld(c,'funcao','Função');
     h+=fld(c,'nivel','Nível');
     h+=fldOpts(c,'tipo_contrato','Tipo de contrato',['CLT','PJ']);
+    if(isYes2(c.tipo_contrato,'PJ')) h+=fld(c,'mei','CNPJ (PJ)'); else h+=fld(c,'mei','MEI - CNPJ');
+    h+=fld(c,'contrato','Contrato');
+    h+='</div></div>';
+    h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Remuneração</div><div class="formgrid">';
     h+=fld(c,'salario','Salário (R$)','number');
     h+=fld(c,'passagem','Valor passagem / dia (R$)','number');
     h+=fld(c,'cache','Valor cachê (R$)','number');
     h+=fld(c,'diaria','Valor diária');
+    h+='</div></div>';
+    h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Dados bancários</div><div class="formgrid">';
     h+=fld(c,'banco','Banco');
     h+=fld(c,'agencia','Agência');
     h+=fld(c,'tipo_conta','Tipo de conta');
     h+=fld(c,'num_conta','Nº da conta');
-    if(isYes2(c.tipo_contrato,'PJ')) h+=fld(c,'mei','CNPJ (PJ)'); else h+=fld(c,'mei','MEI - CNPJ');
-    h+=fld(c,'contrato','Contrato');
-    h+='</div>';
+    h+='</div></div>';
     h+='<div class="card" style="margin-top:14px;border-top:2px solid var(--amber)"><div class="section-title">Desligamento</div>';
     h+='<div class="muted" style="font-size:12px;margin-bottom:8px">Preencha a data de desligamento para tornar o colaborador <b>inativo</b> — ele deixa de aparecer na lista de ativos.</div>';
     h+='<div class="formgrid">'+fld(c,'data_desligamento','Data de desligamento','date')+'</div>';
@@ -814,13 +933,43 @@ function viewGeneric(t){
        '<col class="c-fin"><col class="c-pasta"><col class="c-concl"><col class="c-del"></colgroup>';
   }
   h+='<thead><tr>';
-  cols.forEach(function(c){ h+='<th>'+c[1]+'</th>'; });
+  cols.forEach(function(c){ h+='<th style="cursor:pointer;user-select:none" title="Clique para ordenar" onclick="toggleSort(\''+t+'\',\''+c[0]+'\')">'+c[1]+sortArrow(t,c[0])+'</th>'; });
   h+='<th></th></tr></thead><tbody>';
   h+=tableRows(t);
   h+='</tbody></table></div></div>';
   return h;
 }
+/* tipos de coluna que são numéricos (comparação por valor) — os demais (texto/data ISO) comparam bem como string */
+var SORT_NUM_TYPES={moeda:1,num:1,num2:1,int:1,autodays:1};
+function sortRows(t){
+  var st=SORT_STATE[t]; if(!st||!st.key) return;
+  var cols=COLS[t]||[], col=null;
+  for(var i=0;i<cols.length;i++){ if(cols[i][0]===st.key){ col=cols[i]; break; } }
+  var numeric = col && SORT_NUM_TYPES[col[2]];
+  STORE[t].sort(function(a,b){
+    var av=a[st.key], bv=b[st.key];
+    if(numeric){
+      av=(av===''||av===null||av===undefined||isNaN(parseFloat(av)))?-Infinity:parseFloat(av);
+      bv=(bv===''||bv===null||bv===undefined||isNaN(parseFloat(bv)))?-Infinity:parseFloat(bv);
+      var d = av-bv;
+      return st.dir*(d||0);
+    }
+    av=(''+(av===null||av===undefined?'':av)); bv=(''+(bv===null||bv===undefined?'':bv));
+    return st.dir*av.localeCompare(bv,'pt-BR',{numeric:true,sensitivity:'base'});
+  });
+}
+function toggleSort(t,key){
+  var st=SORT_STATE[t];
+  if(st && st.key===key){ st.dir=-st.dir; } else { SORT_STATE[t]={key:key,dir:1}; }
+  render();
+}
+function sortArrow(t,key){
+  var st=SORT_STATE[t];
+  if(!st||st.key!==key) return '';
+  return st.dir===1?' ▲':' ▼';
+}
 function tableRows(t){
+  sortRows(t);
   var cols=COLS[t]; var h='';
   STORE[t].forEach(function(r){
     var rowStyle='';
@@ -910,6 +1059,7 @@ function cellEditor(t,r,c){
     if(pYes2){ pCls='c-ok'; pLbl='✔ Pago'; }
     else if(ddp===null){ pCls='c-mut'; pLbl='—'; }
     else if(ddp<0){ pCls='c-crit'; pLbl='Vencido '+(-ddp)+'d'; }
+    else if(ddp===0){ pCls='c-warn'; pLbl='Vence hoje'; }
     else { pCls='c-ok'; pLbl='Vence em '+ddp+'d'; }
     return '<div class="flex" style="gap:6px;flex-wrap:nowrap"><span class="chip '+pCls+'">'+pLbl+'</span>'+
       '<select onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"'+dis+'><option value="NÃO"'+(!pYes2?' selected':'')+'>NÃO</option><option value="SIM"'+(pYes2?' selected':'')+'>SIM</option></select></div>';
@@ -1054,6 +1204,9 @@ function rescModal(r){
       h+='<div class="muted" style="font-size:12.5px">⚠ Preencha o <b>valor da rescisão</b> acima antes de configurar o parcelamento.</div>';
     } else {
       h+='<div class="muted" style="font-size:12.5px;margin-bottom:8px">Valor da rescisão a ser parcelado: <b>'+money(valorResc)+'</b></div>';
+      if(mYes && num(r.valor_multa_rescisoria)>0){
+        h+='<div class="muted" style="font-size:11.5px;margin-bottom:8px">⚠ A multa rescisória (<b>'+money(r.valor_multa_rescisoria)+'</b>) não entra nesse parcelamento — ela não pode ter outra data e vence sempre <b>'+fmtD(r.vencimento)+'</b> (10 dias após o desligamento), independente das parcelas.</div>';
+      }
       h+='<div class="flex"><label class="fl">Foi parcelado?<select onchange="updResc(\''+r.id+'\',\'parcelado_pj\',this.value)"'+dis+'>'+
          '<option value="NÃO"'+(!pYes?' selected':'')+'>NÃO</option><option value="SIM"'+(pYes?' selected':'')+'>SIM</option></select></label>';
       if(pYes){
