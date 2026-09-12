@@ -325,23 +325,7 @@ function sbPullSilent(cb){
   function step(){
     if(done<keys.length) return;
     // só substitui as tabelas que vieram do banco; mantém local se a chamada falhou
-    for(var k in tmp){
-      var serverRows=tmp[k];
-      // se existir alteração local ainda não confirmada no Supabase (DIRTY), ela prevalece
-      // sobre o que veio do banco — evita que uma marcação recém-feita "suma" ao recarregar
-      var merged=serverRows.map(function(sr){
-        var dk=dirtyKey(k,sr.id);
-        return DIRTY[dk] ? DIRTY[dk].r : sr;
-      });
-      for(var dkey in DIRTY){
-        if(DIRTY[dkey].t===k){
-          var jaExiste=false;
-          for(var mi=0;mi<merged.length;mi++){ if(merged[mi].id===DIRTY[dkey].r.id){ jaExiste=true; break; } }
-          if(!jaExiste) merged.push(DIRTY[dkey].r);
-        }
-      }
-      STORE[k]=merged;
-    }
+    for(var k in tmp){ STORE[k]=tmp[k]; }
     try{ normalizeData(); }catch(e){}
     saveLocal(); if(cb)cb(true);
   }
@@ -404,6 +388,44 @@ function sbDelete(table,id,cb){
 function money(v){ if(v===null||v===undefined||v==='')return ''; var n=parseFloat(v); if(isNaN(n))return ''; return 'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function num(v){ var n=parseFloat(v); return isNaN(n)?0:n; }
 function fmtD(s){ if(!s)return ''; var p=(''+s).slice(0,10).split('-'); if(p.length!==3)return s; return p[2]+'/'+p[1]+'/'+p[0]; }
+function fmtDShort(s){ if(!s)return ''; var p=(''+s).slice(0,10).split('-'); if(p.length!==3)return s; return p[2]+'/'+p[1]; }
+function wppFerias(id){
+  var r=find('ferias',id); if(!r) return;
+  if(isYes(r.pasta)) return;
+  var nome=(r.colaborador||'').toUpperCase();
+  var msg='Pagamento férias - '+nome+'\n'+(r.empresa||'')+'\n\n- Período de gozo '+fmtDShort(r.inicio)+' a '+fmtD(r.fim)+'\nValor líquido para pagamento: '+money(r.valor)+'\nData de pagamento: '+fmtD(r.vencimento);
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(msg); }catch(e){}
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
+function wppResc(id){
+  var r=find('rescisoes',id); if(!r) return;
+  var pinfo=parcelasInfo(r);
+  if(pinfo && pinfo.quitado) return;
+  if(!pinfo && isYes(r.pasta)) return;
+  var nome=(r.colaborador||'').toUpperCase();
+  var lines=[];
+  lines.push('Pagamento TRCT - '+nome);
+  lines.push(r.empresa||'');
+  lines.push('');
+  lines.push('Valor líquido para pagamento: '+money(r.valor));
+  if(pinfo){
+    lines.push('Parcelamento em '+pinfo.total+'X');
+    parseParcelas(r.parcelas_pj).forEach(function(p,i){ lines.push((i+1)+'° - '+fmtDShort(p.vencimento)); });
+  }
+  if(isYes(r.multa_rescisoria)){
+    lines.push('');
+    lines.push('Multa Rescisória ');
+    lines.push('Valor para pagamento: '+money(r.valor_multa_rescisoria));
+    if(!pinfo) lines.push('');
+    lines.push('Vencimento: '+fmtD(r.vencimento));
+  } else {
+    lines.push('');
+    lines.push('Vencimento: '+fmtD(r.vencimento));
+  }
+  var msg=lines.join('\n');
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(msg); }catch(e){}
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+}
 function today(){ var d=new Date(); return d.toISOString().slice(0,10); }
 function daysBetween(a,b){ if(!a||!b)return null; var d1=new Date(a),d2=new Date(b); return Math.round((d2-d1)/86400000); }
 function addMonths(iso,m){ if(!iso)return ''; var d=new Date((''+iso).slice(0,10)); if(isNaN(d.getTime()))return ''; d.setMonth(d.getMonth()+m); return d.toISOString().slice(0,10); }
@@ -462,7 +484,6 @@ function esc(s){ if(s===null||s===undefined)return''; return (''+s).replace(/&/g
 
 /* ================= ESTADO DE UI ================= */
 var TAB = 'dashboard';
-var SORT_STATE = {}; // {rescisoes:{key:'colaborador',dir:1}, ferias:{...}, ...}
 var COLAB_SUB = 'pessoais';
 var COLAB_STATUS = 'ativos';
 var TABS = [
@@ -772,6 +793,7 @@ function viewGeneric(t){
   h+='</div>';
 
   if(t==='ferias') h+=feriasPanel();
+  if(t==='rescisoes') h+=vencimentosPanel();
 
   h+='<div class="card">';
   h+='<div class="xrow"><div><div class="section-title">'+TITLES[t][0]+'</div><div class="muted" style="font-size:12px">'+TITLES[t][1]+'</div></div>';
@@ -792,48 +814,26 @@ function viewGeneric(t){
        '<col class="c-fin"><col class="c-pasta"><col class="c-concl"><col class="c-del"></colgroup>';
   }
   h+='<thead><tr>';
-  cols.forEach(function(c){ h+='<th style="cursor:pointer;user-select:none" title="Clique para ordenar" onclick="toggleSort(\''+t+'\',\''+c[0]+'\')">'+c[1]+sortArrow(t,c[0])+'</th>'; });
+  cols.forEach(function(c){ h+='<th>'+c[1]+'</th>'; });
   h+='<th></th></tr></thead><tbody>';
   h+=tableRows(t);
   h+='</tbody></table></div></div>';
   return h;
 }
-/* tipos de coluna que são numéricos (comparação por valor) — os demais (texto/data ISO) comparam bem como string */
-var SORT_NUM_TYPES={moeda:1,num:1,num2:1,int:1,autodays:1};
-function sortRows(t){
-  var st=SORT_STATE[t]; if(!st||!st.key) return;
-  var cols=COLS[t]||[], col=null;
-  for(var i=0;i<cols.length;i++){ if(cols[i][0]===st.key){ col=cols[i]; break; } }
-  var numeric = col && SORT_NUM_TYPES[col[2]];
-  STORE[t].sort(function(a,b){
-    var av=a[st.key], bv=b[st.key];
-    if(numeric){
-      av=(av===''||av===null||av===undefined||isNaN(parseFloat(av)))?-Infinity:parseFloat(av);
-      bv=(bv===''||bv===null||bv===undefined||isNaN(parseFloat(bv)))?-Infinity:parseFloat(bv);
-      var d = av-bv;
-      return st.dir*(d||0);
-    }
-    av=(''+(av===null||av===undefined?'':av)); bv=(''+(bv===null||bv===undefined?'':bv));
-    return st.dir*av.localeCompare(bv,'pt-BR',{numeric:true,sensitivity:'base'});
-  });
-}
-function toggleSort(t,key){
-  var st=SORT_STATE[t];
-  if(st && st.key===key){ st.dir=-st.dir; } else { SORT_STATE[t]={key:key,dir:1}; }
-  render();
-}
-function sortArrow(t,key){
-  var st=SORT_STATE[t];
-  if(!st||st.key!==key) return '';
-  return st.dir===1?' ▲':' ▼';
-}
 function tableRows(t){
-  sortRows(t);
   var cols=COLS[t]; var h='';
   STORE[t].forEach(function(r){
-    h+='<tr data-id="'+r.id+'">';
+    var rowStyle='';
+    if(t==='rescisoes'){
+      var pinfoRow=parcelasInfo(r);
+      if(pinfoRow) rowStyle = pinfoRow.quitado ? ' style="background:rgba(61,220,132,.07)"' : ' style="background:rgba(255,176,32,.08)"';
+    }
+    h+='<tr data-id="'+r.id+'"'+rowStyle+'>';
     cols.forEach(function(c){ h+='<td data-col="'+c[0]+'">'+cellEditor(t,r,c)+'</td>'; });
-    h+='<td><button class="btn ghost sm" onclick="delRow(\''+t+'\',\''+r.id+'\')">🗑</button></td>';
+    var pinfoBtn = t==='rescisoes' ? parcelasInfo(r) : null;
+    var showWpp = (t==='ferias'&&!isYes(r.pasta)) || (t==='rescisoes'&&(pinfoBtn?!pinfoBtn.quitado:!isYes(r.pasta)));
+    var wppFn = t==='ferias' ? 'wppFerias' : 'wppResc';
+    h+='<td>'+(showWpp?'<button class="btn ghost sm" title="Gerar mensagem e abrir WhatsApp" onclick="'+wppFn+'(\''+r.id+'\')">📲</button> ':'')+'<button class="btn ghost sm" onclick="delRow(\''+t+'\',\''+r.id+'\')">🗑</button></td>';
     h+='</tr>';
   });
   return h;
@@ -883,14 +883,30 @@ function cellEditor(t,r,c){
     var bits=[];
     if(isYes(r.multa_rescisoria)) bits.push('Multa: '+money(r.valor_multa_rescisoria||0));
     if(num(r.valor_fgts_mensal)) bits.push('FGTS mensal: '+money(r.valor_fgts_mensal));
-    if((''+(r.tipo_desligamento||'')).toUpperCase()==='ACORDO PJ' && isYes(r.parcelado_pj)){ var n=(parseParcelas(r.parcelas_pj)||[]).length; bits.push(n+'x parcelado'); }
+    var pinfo=parcelasInfo(r);
+    if(pinfo){
+      bits.push(pinfo.total+'x parcelado ('+pinfo.pagas+'/'+pinfo.total+' pagas)');
+      if(pinfo.quitado) bits.push('✅ Quitado');
+      else if(pinfo.proxima) bits.push('Próxima: '+fmtD(pinfo.proxima.vencimento)+' — '+money(pinfo.proxima.valor));
+    }
     var badge = bits.length ? '<div class="muted" style="font-size:10px;margin-top:3px">'+esc(bits.join(' · '))+'</div>' : '';
     return '<button class="btn ghost sm" onclick="openResc(\''+t+'\',\''+r.id+'\')">📋 Detalhes</button>'+badge;
   }
   if(type==='pastaCheck'){
     var pYes2=isYes(val);
-    var ddp=daysBetween(today(),(''+(r.vencimento||'')).slice(0,10));
+    var pinfo2 = t==='rescisoes' ? parcelasInfo(r) : null;
     var pCls,pLbl;
+    if(pinfo2){
+      if(pinfo2.quitado){ pCls='c-ok'; pLbl='✅ Quitado ('+pinfo2.total+'/'+pinfo2.total+')'; }
+      else {
+        var ddi2=daysBetween(today(),(''+(pinfo2.proxima.vencimento||'')).slice(0,10));
+        if(ddi2===null){ pCls='c-mut'; pLbl='Parcela '+(pinfo2.proxima.idx+1)+' — sem data'; }
+        else if(ddi2<0){ pCls='c-crit'; pLbl='Parcela '+(pinfo2.proxima.idx+1)+' vencida '+(-ddi2)+'d'; }
+        else { pCls='c-warn'; pLbl='Parcela '+(pinfo2.proxima.idx+1)+' em '+ddi2+'d'; }
+      }
+      return '<span class="chip '+pCls+'">'+pLbl+'</span>';
+    }
+    var ddp=daysBetween(today(),(''+(r.vencimento||'')).slice(0,10));
     if(pYes2){ pCls='c-ok'; pLbl='✔ Pago'; }
     else if(ddp===null){ pCls='c-mut'; pLbl='—'; }
     else if(ddp<0){ pCls='c-crit'; pLbl='Vencido '+(-ddp)+'d'; }
@@ -911,6 +927,9 @@ function cellEditor(t,r,c){
       '<select onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"'+dis+'><option value="NÃO"'+(!yes6?' selected':'')+'>NÃO</option><option value="SIM"'+(yes6?' selected':'')+'>SIM</option></select></div>';
   }
   if(type==='date'){
+    if(t==='rescisoes'&&key==='vencimento'&&parcelasInfo(r)){
+      return '<span class="chip c-warn" title="Este vencimento fixo não vale para Acordo PJ parcelado — use as datas de cada parcela nos Detalhes">📋 Ver parcelas</span>';
+    }
     var xon=on;
     if(t==='rescisoes'&&key==='desligamento') xon='onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"';
     return '<input type="date" value="'+esc((''+val).slice(0,10))+'" '+xon+dis+'>';
@@ -930,6 +949,15 @@ function cellEditor(t,r,c){
     return val ? '<span style="font-weight:600">'+fmtD(val)+'</span> <span class="muted" style="font-size:10px">auto</span>' : '<span class="muted" style="font-size:11px">preencha início e dias</span>';
   }
   return '<input value="'+esc(val)+'" '+on+dis+'>';
+}
+function parcelasInfo(r){
+  if((''+(r.tipo_desligamento||'')).toUpperCase()!=='ACORDO PJ' || !isYes(r.parcelado_pj)) return null;
+  var arr=parseParcelas(r.parcelas_pj);
+  if(!arr.length) return null;
+  var pagas=arr.filter(function(p){return isYes(p.pago);}).length;
+  var proxima=null;
+  for(var i=0;i<arr.length;i++){ if(!isYes(arr[i].pago)){ proxima={idx:i,valor:arr[i].valor,vencimento:arr[i].vencimento}; break; } }
+  return {total:arr.length,pagas:pagas,quitado:pagas===arr.length,proxima:proxima};
 }
 function parseParcelas(s){
   if(!s) return [];
@@ -985,6 +1013,9 @@ function updParcela(id,idx,key,val){
   arr[idx][key]=key==='valor'?(val===''?'':parseFloat((''+val).replace(',','.'))):val;
   r.parcelas_pj=JSON.stringify(arr);
   saveLocal(); persist('rescisoes',r);
+  document.getElementById('modal').innerHTML=rescModal(r);
+  refreshCell('rescisoes',id,'detalhes');
+  refreshCell('rescisoes',id,'pasta');
 }
 function rescModal(r){
   var locked=isYes(r.bloqueado);
@@ -1033,22 +1064,34 @@ function rescModal(r){
       }
       h+='</div>';
       if(pYes && parcelas.length){
-        h+='<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Parcela</th><th>Valor</th><th>Vencimento</th></tr></thead><tbody>';
+        h+='<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>Parcela</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Paga?</th></tr></thead><tbody>';
         parcelas.forEach(function(p,i){
+          var pgYes=isYes(p.pago);
+          var ddi=daysBetween(today(),(''+(p.vencimento||'')).slice(0,10));
+          var stH;
+          if(pgYes) stH='<span class="chip c-ok">✔ Paga</span>';
+          else if(ddi===null) stH='<span class="chip c-mut">—</span>';
+          else if(ddi<0) stH='<span class="chip c-crit">Vencida '+(-ddi)+'d</span>';
+          else stH='<span class="chip c-warn">Vence em '+ddi+'d</span>';
           h+='<tr><td>'+(i+1)+'ª</td>'+
              '<td><input type="number" step="0.01" min="0" value="'+esc(p.valor||'')+'" onchange="updParcela(\''+r.id+'\',\''+i+'\',\'valor\',this.value)"'+dis+'></td>'+
-             '<td><input type="date" value="'+esc((''+(p.vencimento||'')).slice(0,10))+'" onchange="updParcela(\''+r.id+'\',\''+i+'\',\'vencimento\',this.value)"'+dis+'></td></tr>';
+             '<td><input type="date" value="'+esc((''+(p.vencimento||'')).slice(0,10))+'" onchange="updParcela(\''+r.id+'\',\''+i+'\',\'vencimento\',this.value)"'+dis+'></td>'+
+             '<td>'+stH+'</td>'+
+             '<td><input type="checkbox" '+(pgYes?'checked':'')+' onchange="updParcela(\''+r.id+'\',\''+i+'\',\'pago\',this.checked?\'SIM\':\'NÃO\')"'+dis+'></td></tr>';
         });
         var totalP=parcelas.reduce(function(s,p){return s+(parseFloat(p.valor)||0);},0);
         var difP=Math.round((totalP-valorResc)*100)/100;
         var okP=Math.abs(difP)<0.01;
+        var pagas=parcelas.filter(function(p){return isYes(p.pago);}).length;
         h+='</tbody></table></div><div style="font-size:12px;margin-top:6px" class="'+(okP?'muted':'')+'">Total parcelado: <b>'+money(totalP)+'</b>'+
-           (okP?' <span class="chip c-ok" style="margin-left:6px">bate com o valor da rescisão</span>':' <span class="chip c-crit" style="margin-left:6px">'+(difP>0?'excede '+money(difP):'falta '+money(-difP))+'</span>')+'</div>';
+           (okP?' <span class="chip c-ok" style="margin-left:6px">bate com o valor da rescisão</span>':' <span class="chip c-crit" style="margin-left:6px">'+(difP>0?'excede '+money(difP):'falta '+money(-difP))+'</span>')+
+           ' <span class="chip '+(pagas===parcelas.length?'c-ok':'c-warn')+'" style="margin-left:6px">'+pagas+'/'+parcelas.length+' pagas'+(pagas===parcelas.length?' — Quitado ✅':'')+'</span></div>';
       }
     }
     h+='</div>';
   }
 
+  h+='<div class="xrow" style="margin-top:14px;justify-content:flex-end"><button class="btn save" onclick="closeOv()">💾 Salvar e fechar</button></div>';
   return h;
 }
 function toggleLock(t,id){
@@ -1113,43 +1156,9 @@ function upd(t,id,key,val){
   if(t==='rescisoes'&&key==='valor'){ refreshCell('rescisoes',id,'valor_total_calc'); }
   if(t==='rescisoes'&&key==='pasta'){ refreshCell('rescisoes',id,'pasta'); }
 }
-function dirtyKey(t,id){ return t+':'+id; }
-function markDirty(t,r){ DIRTY[dirtyKey(t,r.id)]={t:t,r:JSON.parse(JSON.stringify(r))}; saveDirty(); }
-function clearDirty(t,id){ delete DIRTY[dirtyKey(t,id)]; saveDirty(); }
-function saveDirty(){ try{ window.localStorage.setItem('dp_iled_dirty', JSON.stringify(DIRTY)); }catch(e){} }
-function loadDirty(){ try{ var s=window.localStorage.getItem('dp_iled_dirty'); if(s) DIRTY=JSON.parse(s)||{}; }catch(e){} }
-function dirtyCount(){ return Object.keys(DIRTY).length; }
-/* Reenvia ao Supabase qualquer alteração que ficou pendente (ex.: internet caiu, fechou a aba rápido demais).
-   Roda ANTES de qualquer sbPull, pra nunca deixar o servidor "vencer" uma edição local ainda não confirmada. */
-function flushDirty(cb){
-  var keys=Object.keys(DIRTY);
-  if(!keys.length){ if(cb)cb(); return; }
-  var done=0;
-  keys.forEach(function(k){
-    var item=DIRTY[k];
-    var rc=cleanRow(item.t,item.r); rc.atualizado_em=new Date().toISOString();
-    sbUpsert(TBL[item.t],rc,function(ok){
-      if(ok) clearDirty(item.t,item.r.id);
-      done++; if(done===keys.length && cb) cb();
-    });
-  });
-}
 function persist(t,r){
   saveLocal();
-  if(sbConfigured()){
-    markDirty(t,r);
-    var rc=cleanRow(t,r); rc.atualizado_em=new Date().toISOString();
-    sbUpsert(TBL[t],rc,function(ok,err){
-      if(ok){
-        clearDirty(t,r.id);
-        setDbStatus(true, dirtyCount()? '⚠ '+dirtyCount()+' alteração(ões) pendente(s)' : 'Supabase ✓ salvo');
-      } else {
-        setDbStatus(false,'⚠ Falha ao salvar — mantido só localmente');
-        showWarn('⚠ Não salvou no Supabase (sem conexão ou permissão). A alteração ficou guardada neste computador e será reenviada automaticamente — não feche a aba até reconectar.');
-        if(err)console.warn('Supabase',err);
-      }
-    });
-  }
+  if(sbConfigured()){ var rc=cleanRow(t,r); rc.atualizado_em=new Date().toISOString(); sbUpsert(TBL[t],rc,function(ok,err){ setDbStatus(ok,ok?'Supabase ✓ salvo':'Falha ao salvar'); if(!ok&&err)console.warn('Supabase',err); }); }
 }
 function delRow(t,id){
   if(!confirm('Excluir este registro?'))return;
@@ -1164,6 +1173,38 @@ function kpi(eye,big,desc,hero){ return '<div class="card kpi'+(hero?' hero':'')
 function sum(rows,key){ var s=0; rows.forEach(function(r){s+=num(r[key]);}); return s; }
 /* valor total da rescisão = valor + multa rescisória (quando houver), pois a multa é valor devido ao colaborador */
 function rescTotal(r){ var v=num(r.valor); if(isYes(r.multa_rescisoria)) v+=num(r.valor_multa_rescisoria); return v; }
+function pendenciasRescisoes(){
+  var tdy=today(), out=[];
+  (STORE.rescisoes||[]).forEach(function(r){
+    var pinfo=parcelasInfo(r);
+    if(pinfo){
+      if(pinfo.quitado) return;
+      var v=(''+(pinfo.proxima.vencimento||'')).slice(0,10);
+      if(v && v>=tdy) out.push({nome:r.colaborador,empresa:r.empresa,valor:num(pinfo.proxima.valor),vencimento:v,obs:'Parcela '+(pinfo.proxima.idx+1)+'/'+pinfo.total});
+    } else {
+      var v2=(''+(r.vencimento||'')).slice(0,10);
+      if(v2 && v2>=tdy && !isYes(r.pasta)) out.push({nome:r.colaborador,empresa:r.empresa,valor:rescTotal(r),vencimento:v2,obs:''});
+    }
+  });
+  out.sort(function(a,b){ return a.vencimento<b.vencimento?-1:(a.vencimento>b.vencimento?1:0); });
+  return out;
+}
+function vencimentosPanel(){
+  var list=pendenciasRescisoes();
+  var h='<div class="card" style="margin-bottom:14px;padding:12px 14px"><div class="muted" style="font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase">🔔 Vencimentos pendentes</div>';
+  if(!list.length){ h+='<div class="muted" style="font-size:11px;margin-top:4px">Nenhum vencimento pendente.</div>'; }
+  else{
+    h+='<div class="tablewrap" style="margin-top:6px;max-height:160px;overflow:auto"><table style="font-size:11.5px"><tbody>';
+    list.forEach(function(x){
+      var dd=daysBetween(today(),x.vencimento);
+      var cls = dd<=2?'c-crit':(dd<=5?'c-warn':'c-ok');
+      h+='<tr><td>'+esc(x.nome||'—')+(x.obs?' <span class="muted" style="font-size:10px">('+esc(x.obs)+')</span>':'')+'</td><td class="muted">'+esc(x.empresa||'')+'</td><td>'+money(x.valor)+'</td>'+
+         '<td style="white-space:nowrap"><span class="chip '+cls+'" style="font-size:10.5px;padding:2px 7px">'+fmtD(x.vencimento)+' ('+dd+'d)</span></td></tr>';
+    });
+    h+='</tbody></table></div>';
+  }
+  return h+'</div>';
+}
 function isYes(v){ v=(''+(v||'')).toLowerCase(); return v==='sim'||v==='ok'||v==='true'||v==='1'||v==='x'; }
 function mesNome(m){ return ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][m]; }
 
@@ -1380,22 +1421,15 @@ document.getElementById('cfgov').addEventListener('click',function(e){ if(e.targ
 /* ================= BOOT (modo multiusuário) ================= */
 var ADMIN=false;
 loadCfg();
-loadDirty();
 if(sbConfigured()){
-  // Mostra os dados locais IMEDIATAMENTE (nunca fica com a tela em branco esperando a rede).
-  var hadLocal=loadLocal();
-  if(!hadLocal || storeEmpty()){ seedFromSheet(); }
-  migrateIds(); normalizeData();
+  // Supabase é a fonte única: carrega do banco ao abrir (não semeia local, não empurra)
+  STORE={colaboradores:[],rescisoes:[],ferias:[],folha:[],custos:[]};
   render();
-  setDbStatus(true, dirtyCount()? '⚠ Reenviando alterações pendentes...' : 'Sincronizando...');
-  // Primeiro reenvia qualquer alteração que ficou pendente da última vez (não sincronizada),
-  // só DEPOIS busca do banco — assim o servidor nunca "apaga" uma edição local ainda não confirmada.
-  flushDirty(function(){
-    sbPullSilent(function(ok){
-      if(ok){ setDbStatus(true, dirtyCount()? '⚠ '+dirtyCount()+' alteração(ões) pendente(s)' : 'Supabase conectado'); }
-      else { setDbStatus(false,'Sem conexão — dados locais mantidos'); }
-      render();
-    });
+  setDbStatus(true,'Carregando do banco...');
+  sbPullSilent(function(ok){
+    if(ok){ setDbStatus(true,'Supabase conectado'); }
+    else { setDbStatus(false,'Sem conexão — tente Atualizar'); }
+    render();
   });
 } else {
   // modo local (standalone) para testes sem banco
@@ -1403,10 +1437,6 @@ if(sbConfigured()){
   render();
 }
 sbTest(function(){});
-// Avisa antes de fechar a aba se ainda houver alterações não confirmadas no Supabase
-window.addEventListener('beforeunload', function(e){
-  if(dirtyCount()>0){ e.preventDefault(); e.returnValue=''; }
-});
 </script>
 </body>
 </html>
