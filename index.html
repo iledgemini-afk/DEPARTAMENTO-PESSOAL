@@ -126,6 +126,10 @@ td input:focus,td select:focus{border-color:var(--red);background:rgba(255,255,2
 #tbl_rescisoes td[data-col="valor_total_calc"] span{font-size:12.5px;font-weight:700;white-space:nowrap}
 #tbl_rescisoes td[data-col="valor"] input{width:100%}
 #tbl_rescisoes td[data-col="pasta"] .flex{flex-wrap:wrap;gap:4px}
+#tbl_rescisoes tr.subrow-pj td{background:rgba(79,140,255,.06);border-bottom:1px solid var(--line2);padding:7px 12px}
+#tbl_rescisoes tr.subrow-pj .subrow-inner{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#tbl_rescisoes tr.subrow-pj .subrow-inner .chip{font-size:10.5px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+#tbl_rescisoes tr.subrow-pj .subrow-inner input[type="checkbox"]{margin:0}
 .chip{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
 .c-ok{background:rgba(61,220,132,.16);color:#4fe89a}
 .c-warn{background:rgba(255,176,32,.16);color:#ffc457}
@@ -368,7 +372,7 @@ var NUMCOLS={
 };
 var ALLOWED={
   colaboradores:['id','empresa','nome','cpf','rg','nascimento','funcao','nivel','telefone','admissao','salario','cache','diaria','passagem','email','endereco','cidade','cep','banco','agencia','tipo_conta','num_conta','pix','mei','contrato','tipo_contrato','data_desligamento','exp_efetivado','fim_experiencia','aso','contrato_cp','nr06','nr10','nr11','nr18','nr18_plat','nr35','os_seg','ficha_epi','nada_consta','emergencia','ativo','atualizado_em'],
-  rescisoes:['id','empresa','colaborador','tipo_contrato','desligamento','tipo_desligamento','tipo_doc','multa_rescisoria','valor_multa_rescisoria','valor_complementar','valor_fgts_mensal','parcelado_pj','parcelas_pj','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
+  rescisoes:['id','empresa','colaborador','tipo_contrato','desligamento','tipo_desligamento','tipo_doc','multa_rescisoria','valor_multa_rescisoria','multa_paga','valor_complementar','valor_fgts_mensal','parcelado_pj','parcelas_pj','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   ferias:['id','empresa','colaborador','inicio','fim','dias','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   folha:['id','empresa','competencia','qtd','liquido','gratif','total','atualizado_em'],
   custos:['id','empresa','competencia','descricao','valor','vencimento','financeiro','atualizado_em']
@@ -571,7 +575,7 @@ function calendarEventsForMonth(){
       });
       /* a multa não parcela — vence sempre 10 dias após o desligamento (mesma data de r.vencimento) */
       if(isYes(r.multa_rescisoria) && num(r.valor_multa_rescisoria)>0){
-        add(r.vencimento,'MULTA RESCISÓRIA - '+(r.colaborador||'—')+' - '+(money(r.valor_multa_rescisoria)||'—'),statusCls(r.vencimento,false));
+        add(r.vencimento,'MULTA RESCISÓRIA - '+(r.colaborador||'—')+' - '+(money(r.valor_multa_rescisoria)||'—'),statusCls(r.vencimento,isYes(r.multa_paga)));
       }
     } else {
       add(r.vencimento,(r.tipo_doc||'TRCT')+' - '+(r.colaborador||'—')+' - '+(money(rescTotal(r))||'—'),statusCls(r.vencimento,isYes(r.pasta)));
@@ -984,11 +988,24 @@ function tableRows(t){
     var wppFn = t==='ferias' ? 'wppFerias' : 'wppResc';
     h+='<td>'+(showWpp?'<button class="btn ghost sm" title="Gerar mensagem e abrir WhatsApp" onclick="'+wppFn+'(\''+r.id+'\')">📲</button> ':'')+'<button class="btn ghost sm" onclick="delRow(\''+t+'\',\''+r.id+'\')">🗑</button></td>';
     h+='</tr>';
+    if(t==='rescisoes') h+=subrowResc(r);
   });
   return h;
 }
 /* Atualiza só a célula derivada indicada (nunca a célula que o usuário está digitando),
    pra não perder o foco/cursor no meio da digitação de uma data. */
+function refreshSubrow(id){
+  var r=find('rescisoes',id); if(!r) return;
+  var tb=document.getElementById('tbl_rescisoes'); if(!tb) return;
+  var old=tb.querySelector('tr.subrow-pj[data-sub-id="'+id+'"]');
+  var html=subrowResc(r);
+  if(old){
+    if(html){ old.outerHTML=html; } else { old.parentNode.removeChild(old); }
+  } else if(html){
+    var mainRow=tb.querySelector('tr[data-id="'+id+'"]');
+    if(mainRow) mainRow.insertAdjacentHTML('afterend', html);
+  }
+}
 function refreshCell(t,id,key){
   var cols=COLS[t]||[], col=null;
   for(var i=0;i<cols.length;i++){ if(cols[i][0]===key){ col=cols[i]; break; } }
@@ -1030,14 +1047,10 @@ function cellEditor(t,r,c){
   }
   if(type==='recDetail'){
     var bits=[];
-    if(isYes(r.multa_rescisoria)) bits.push('Multa: '+money(r.valor_multa_rescisoria||0));
+    if(isYes(r.multa_rescisoria)) bits.push('Multa: '+money(r.valor_multa_rescisoria||0)+(isYes(r.multa_paga)?' (paga ✔)':' (pendente)'));
     if(num(r.valor_fgts_mensal)) bits.push('FGTS mensal: '+money(r.valor_fgts_mensal));
     var pinfo=parcelasInfo(r);
-    if(pinfo){
-      bits.push(pinfo.total+'x parcelado ('+pinfo.pagas+'/'+pinfo.total+' pagas)');
-      if(pinfo.quitado) bits.push('✅ Quitado');
-      else if(pinfo.proxima) bits.push('Próxima: '+fmtD(pinfo.proxima.vencimento)+' — '+money(pinfo.proxima.valor));
-    }
+    if(pinfo) bits.push((pinfo.quitado?'✅ ':'🧾 ')+pinfo.total+'x parcelado — detalhe na linha abaixo');
     var badge = bits.length ? '<div class="muted" style="font-size:10px;margin-top:3px">'+esc(bits.join(' · '))+'</div>' : '';
     return '<button class="btn ghost sm" onclick="openResc(\''+t+'\',\''+r.id+'\')">📋 Detalhes</button>'+badge;
   }
@@ -1046,14 +1059,14 @@ function cellEditor(t,r,c){
     var pinfo2 = t==='rescisoes' ? parcelasInfo(r) : null;
     var pCls,pLbl;
     if(pinfo2){
-      if(pinfo2.quitado){ pCls='c-ok'; pLbl='✅ Quitado ('+pinfo2.total+'/'+pinfo2.total+')'; }
+      var mQuit=multaQuitada(r);
+      if(pinfo2.quitado && mQuit){ pCls='c-ok'; pLbl='✅ Quitado'; }
       else {
-        var ddi2=daysBetween(today(),(''+(pinfo2.proxima.vencimento||'')).slice(0,10));
-        if(ddi2===null){ pCls='c-mut'; pLbl='Parcela '+(pinfo2.proxima.idx+1)+' — sem data'; }
-        else if(ddi2<0){ pCls='c-crit'; pLbl='Parcela '+(pinfo2.proxima.idx+1)+' vencida '+(-ddi2)+'d'; }
-        else { pCls='c-warn'; pLbl='Parcela '+(pinfo2.proxima.idx+1)+' em '+ddi2+'d'; }
+        var ddi2=daysBetween(today(),(''+(pinfo2.proxima?pinfo2.proxima.vencimento:r.vencimento||'')).slice(0,10));
+        pCls = (ddi2!==null && ddi2<0) ? 'c-crit' : 'c-warn';
+        pLbl = pinfo2.quitado ? 'Multa pendente' : 'Em aberto ('+pinfo2.pagas+'/'+pinfo2.total+')';
       }
-      return '<span class="chip '+pCls+'">'+pLbl+'</span>';
+      return '<span class="chip '+pCls+'" title="Detalhe das parcelas e da multa na linha abaixo">'+pLbl+'</span>';
     }
     var ddp=daysBetween(today(),(''+(r.vencimento||'')).slice(0,10));
     if(pYes2){ pCls='c-ok'; pLbl='✔ Pago'; }
@@ -1077,12 +1090,13 @@ function cellEditor(t,r,c){
       '<select onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"'+dis+'><option value="NÃO"'+(!yes6?' selected':'')+'>NÃO</option><option value="SIM"'+(yes6?' selected':'')+'>SIM</option></select></div>';
   }
   if(type==='date'){
-    if(t==='rescisoes'&&key==='vencimento'&&parcelasInfo(r)){
-      return '<span class="chip c-warn" title="Este vencimento fixo não vale para Acordo PJ parcelado — use as datas de cada parcela nos Detalhes">📋 Ver parcelas</span>';
-    }
     var xon=on;
     if(t==='rescisoes'&&key==='desligamento') xon='onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"';
-    return '<input type="date" value="'+esc((''+val).slice(0,10))+'" '+xon+dis+'>';
+    var extra='';
+    if(t==='rescisoes'&&key==='vencimento'&&parcelasInfo(r)){
+      extra='<div class="muted" style="font-size:9px;margin-top:2px;white-space:nowrap">vencimento da multa · parcelas ↓</div>';
+    }
+    return '<input type="date" value="'+esc((''+val).slice(0,10))+'" '+xon+dis+'>'+extra;
   }
   if(type==='month'){ var mv=(''+val).slice(0,7); return '<input type="month" value="'+esc(mv)+'" onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value?this.value+\'-01\':\'\')"'+dis+'>'; }
   if(type==='moeda'){
@@ -1099,6 +1113,47 @@ function cellEditor(t,r,c){
     return val ? '<span style="font-weight:600">'+fmtD(val)+'</span> <span class="muted" style="font-size:10px">auto</span>' : '<span class="muted" style="font-size:11px">preencha início e dias</span>';
   }
   return '<input value="'+esc(val)+'" '+on+dis+'>';
+}
+function subrowResc(r){
+  var pinfo=parcelasInfo(r);
+  var hasMulta=isYes(r.multa_rescisoria);
+  if(!pinfo && !hasMulta) return '';
+  var dis = isYes(r.bloqueado) ? ' disabled' : '';
+  var h='<tr class="subrow-pj" data-sub-id="'+r.id+'"><td colspan="'+(COLS.rescisoes.length+1)+'"><div class="subrow-inner">';
+  if(pinfo) h+='<span class="chip c-info">🧾 Acordo PJ · parcelamento</span>';
+  if(isYes(r.multa_rescisoria)){
+    var mpg=isYes(r.multa_paga);
+    h+='<span class="chip '+(mpg?'c-ok':'c-warn')+'">Multa '+money(r.valor_multa_rescisoria||0)+' · vence '+fmtD(r.vencimento)+' · '+(mpg?'✔ paga':'pendente')+
+       ' <input type="checkbox" '+(mpg?'checked':'')+' title="Marcar multa como paga" onchange="toggleMultaPaga(\''+r.id+'\',this.checked?\'SIM\':\'NÃO\')"'+dis+'></span>';
+  }
+  if(num(r.valor_fgts_mensal)) h+='<span class="chip c-mut">FGTS mensal '+money(r.valor_fgts_mensal)+'</span>';
+  if(pinfo){
+    var arr=parseParcelas(r.parcelas_pj);
+    arr.forEach(function(p,i){
+      var pgYes=isYes(p.pago);
+      var ddi=daysBetween(today(),(''+(p.vencimento||'')).slice(0,10));
+      var cls,lbl;
+      if(pgYes){ cls='c-ok'; lbl='✔ paga'; }
+      else if(ddi===null){ cls='c-mut'; lbl='sem data'; }
+      else if(ddi<0){ cls='c-crit'; lbl='vencida '+(-ddi)+'d'; }
+      else { cls='c-warn'; lbl='em '+ddi+'d'; }
+      h+='<span class="chip '+cls+'">'+(i+1)+'ª '+money(p.valor||0)+' · '+fmtD(p.vencimento)+' · '+lbl+
+         ' <input type="checkbox" '+(pgYes?'checked':'')+' title="Marcar esta parcela como paga" onchange="updParcela(\''+r.id+'\','+i+',\'pago\',this.checked?\'SIM\':\'NÃO\')"'+dis+'></span>';
+    });
+  }
+  h+='<button class="btn ghost sm" onclick="openResc(\'rescisoes\',\''+r.id+'\')">✏️ Editar</button>';
+  h+='</div></td></tr>';
+  return h;
+}
+function multaQuitada(r){ return !isYes(r.multa_rescisoria) || isYes(r.multa_paga); }
+function toggleMultaPaga(id,val){
+  var r=find('rescisoes',id); if(!r)return;
+  r.multa_paga=val;
+  saveLocal(); persist('rescisoes',r);
+  if(document.getElementById('overlay').className.indexOf('show')>=0){ document.getElementById('modal').innerHTML=rescModal(r); }
+  refreshCell('rescisoes',id,'detalhes');
+  refreshCell('rescisoes',id,'pasta');
+  refreshSubrow(id);
 }
 function parcelasInfo(r){
   if((''+(r.tipo_desligamento||'')).toUpperCase()!=='ACORDO PJ' || !isYes(r.parcelado_pj)) return null;
@@ -1126,7 +1181,9 @@ function updResc(id,key,val){
   document.getElementById('modal').innerHTML=rescModal(r);
   refreshCell('rescisoes',id,'valor_total_calc');
   refreshCell('rescisoes',id,'detalhes');
+  refreshCell('rescisoes',id,'pasta');
   if(key==='valor') refreshCell('rescisoes',id,'valor');
+  refreshSubrow(id);
 }
 function dividirParcelasIgual(id){
   var r=find('rescisoes',id); if(!r)return;
@@ -1144,6 +1201,7 @@ function dividirParcelasIgual(id){
   saveLocal(); persist('rescisoes',r);
   document.getElementById('modal').innerHTML=rescModal(r);
   refreshCell('rescisoes',id,'detalhes');
+  refreshSubrow(id);
 }
 function setParcelaQtd(id,n){
   var r=find('rescisoes',id); if(!r)return;
@@ -1155,6 +1213,7 @@ function setParcelaQtd(id,n){
   saveLocal(); persist('rescisoes',r);
   document.getElementById('modal').innerHTML=rescModal(r);
   refreshCell('rescisoes',id,'detalhes');
+  refreshSubrow(id);
 }
 function updParcela(id,idx,key,val){
   var r=find('rescisoes',id); if(!r)return;
@@ -1166,6 +1225,7 @@ function updParcela(id,idx,key,val){
   document.getElementById('modal').innerHTML=rescModal(r);
   refreshCell('rescisoes',id,'detalhes');
   refreshCell('rescisoes',id,'pasta');
+  refreshSubrow(id);
 }
 function rescModal(r){
   var locked=isYes(r.bloqueado);
@@ -1185,6 +1245,8 @@ function rescModal(r){
      '<option value="NÃO"'+(!mYes?' selected':'')+'>NÃO</option><option value="SIM"'+(mYes?' selected':'')+'>SIM</option></select></label>';
   if(mYes){
     h+='<label class="fl">Valor da multa (custo deste colaborador)<input type="number" step="0.01" min="0" value="'+esc(r.valor_multa_rescisoria||'')+'" onchange="updResc(\''+r.id+'\',\'valor_multa_rescisoria\',this.value)"'+dis+'></label>';
+    h+='<label class="fl">Multa foi paga?<select onchange="toggleMultaPaga(\''+r.id+'\',this.value)"'+dis+'>'+
+       '<option value="NÃO"'+(!isYes(r.multa_paga)?' selected':'')+'>NÃO</option><option value="SIM"'+(isYes(r.multa_paga)?' selected':'')+'>SIM</option></select></label>';
   }
   h+='</div>';
   h+='<div class="flex" style="margin-top:8px">';
@@ -1192,7 +1254,8 @@ function rescModal(r){
   h+='<label class="fl">FGTS mensal (caso tenha)<input type="number" step="0.01" min="0" value="'+esc(r.valor_fgts_mensal||'')+'" onchange="updResc(\''+r.id+'\',\'valor_fgts_mensal\',this.value)"'+dis+'></label>';
   h+='</div>';
   if(mYes){
-    h+='<div class="muted" style="font-size:12px;margin-top:10px">A multa é somada automaticamente ao valor total da rescisão, pois é um valor devido ao colaborador. Valor total: <b>'+money(rescTotal(r))+'</b></div>';
+    h+='<div class="muted" style="font-size:12px;margin-top:10px">A multa é somada automaticamente ao valor total da rescisão, pois é um valor devido ao colaborador. Valor total: <b>'+money(rescTotal(r))+'</b>'+
+       ' <span class="chip '+(isYes(r.multa_paga)?'c-ok':'c-warn')+'" style="margin-left:6px">'+(isYes(r.multa_paga)?'✔ Multa paga':'Multa pendente')+'</span></div>';
   }
   h+='</div>';
 
@@ -1304,8 +1367,8 @@ function upd(t,id,key,val){
   /* atualiza só as células calculadas — nunca a célula que está sendo digitada, senão o campo perde o foco e "pula" no meio da data */
   if(t==='ferias'&&(key==='inicio'||key==='dias')){ refreshCell('ferias',id,'fim'); }
   if(t==='ferias'&&key==='inicio'){ refreshCell('ferias',id,'vencimento'); }
-  if(t==='rescisoes'&&key==='desligamento'){ refreshCell('rescisoes',id,'vencimento'); refreshCell('rescisoes',id,'pasta'); }
-  if(t==='rescisoes'&&key==='tipo_desligamento'){ refreshCell('rescisoes',id,'detalhes'); }
+  if(t==='rescisoes'&&key==='desligamento'){ refreshCell('rescisoes',id,'vencimento'); refreshCell('rescisoes',id,'pasta'); refreshSubrow(id); }
+  if(t==='rescisoes'&&key==='tipo_desligamento'){ refreshCell('rescisoes',id,'detalhes'); refreshSubrow(id); }
   if(t==='rescisoes'&&key==='valor'){ refreshCell('rescisoes',id,'valor_total_calc'); }
   if(t==='rescisoes'&&key==='pasta'){ refreshCell('rescisoes',id,'pasta'); }
 }
@@ -1331,9 +1394,14 @@ function pendenciasRescisoes(){
   (STORE.rescisoes||[]).forEach(function(r){
     var pinfo=parcelasInfo(r);
     if(pinfo){
-      if(pinfo.quitado) return;
-      var v=(''+(pinfo.proxima.vencimento||'')).slice(0,10);
-      if(v && v>=tdy) out.push({nome:r.colaborador,empresa:r.empresa,valor:num(pinfo.proxima.valor),vencimento:v,obs:'Parcela '+(pinfo.proxima.idx+1)+'/'+pinfo.total});
+      if(!pinfo.quitado){
+        var v=(''+(pinfo.proxima.vencimento||'')).slice(0,10);
+        if(v && v>=tdy) out.push({nome:r.colaborador,empresa:r.empresa,valor:num(pinfo.proxima.valor),vencimento:v,obs:'Parcela '+(pinfo.proxima.idx+1)+'/'+pinfo.total});
+      }
+      if(isYes(r.multa_rescisoria) && num(r.valor_multa_rescisoria)>0 && !isYes(r.multa_paga)){
+        var vm=(''+(r.vencimento||'')).slice(0,10);
+        if(vm && vm>=tdy) out.push({nome:r.colaborador,empresa:r.empresa,valor:num(r.valor_multa_rescisoria),vencimento:vm,obs:'Multa rescisória'});
+      }
     } else {
       var v2=(''+(r.vencimento||'')).slice(0,10);
       if(v2 && v2>=tdy && !isYes(r.pasta)) out.push({nome:r.colaborador,empresa:r.empresa,valor:rescTotal(r),vencimento:v2,obs:''});
