@@ -1374,7 +1374,7 @@ function upd(t,id,key,val){
 }
 function persist(t,r){
   saveLocal();
-  if(sbConfigured()){ var rc=cleanRow(t,r); rc.atualizado_em=new Date().toISOString(); sbUpsert(TBL[t],rc,function(ok,err){ setDbStatus(ok,ok?'Supabase ✓ salvo':'Falha ao salvar'); if(!ok&&err)console.warn('Supabase',err); }); }
+  if(sbConfigured()){ var rc=cleanRow(t,r); rc.atualizado_em=new Date().toISOString(); sbUpsert(TBL[t],rc,function(ok,err){ setDbStatus(ok,ok?'Supabase ✓ salvo':'Falha ao salvar'); if(!ok&&err){ console.warn('Supabase',err); showWarn('⚠ Falha ao salvar: '+(''+err).slice(0,180)); } }); }
 }
 function delRow(t,id){
   if(!confirm('Excluir este registro?'))return;
