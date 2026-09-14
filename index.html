@@ -80,6 +80,21 @@ input,select{
   border:1px solid var(--line2);border-radius:9px;padding:8px 10px;outline:none;
 }
 input::placeholder{color:var(--mut2)}
+.datetrio{display:inline-flex;align-items:center;gap:2px;background:rgba(255,255,255,.04);border:1px solid var(--line2);border-radius:9px;padding:0 4px}
+.datetrio:focus-within{border-color:var(--red);box-shadow:0 0 0 2px rgba(225,6,0,.25)}
+.datetrio.err{border-color:var(--red2)!important;box-shadow:0 0 0 2px rgba(255,31,68,.28)!important;background:rgba(255,31,68,.08)!important}
+label.fl.fl-err{color:var(--red2)}
+label.fl.fl-err select,label.fl.fl-err input:not(.dtd):not(.dtm):not(.dta){border-color:var(--red2)!important;box-shadow:0 0 0 2px rgba(255,31,68,.28)!important;background:rgba(255,31,68,.08)!important}
+.req-mark{color:var(--red2);font-weight:800;font-size:10.5px;margin-left:4px;letter-spacing:.3px}
+.colab-missing-banner{border:1.5px solid var(--red2);background:rgba(225,6,0,.14);color:#ffb3ba;padding:12px 14px;border-radius:12px;margin-bottom:14px;font-size:12.5px;line-height:1.6}
+.colab-missing-banner b{color:#fff}
+.savebtn-err{background:var(--red2)!important}
+.datetrio input{border:none!important;background:transparent!important;box-shadow:none!important;padding:8px 2px!important;text-align:center;min-width:0!important;letter-spacing:.5px}
+.datetrio input.dtd,.datetrio input.dtm{width:26px!important}
+.datetrio input.dta{width:46px!important}
+.datetrio .dtsep{color:var(--mut2);font-size:11px}
+td .datetrio{width:100%;padding:2px 4px}
+label.fl .datetrio{margin-top:1px}
 input:focus,select:focus{border-color:var(--red);box-shadow:0 0 0 2px rgba(225,6,0,.25)}
 select option{background:#14161d;color:var(--txt)}
 label.fl{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--mut);font-weight:600}
@@ -88,6 +103,7 @@ label.fl{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--m
   cursor:pointer;font-family:inherit;background:var(--red);color:#fff;box-shadow:0 6px 18px rgba(225,6,0,.4);
 }
 .btn.ghost{background:rgba(255,255,255,.05);color:var(--txt);border:1px solid var(--line2);box-shadow:none}
+.btn.ghost.active{background:rgba(79,140,255,.16);color:#7aa8ff;border-color:rgba(79,140,255,.4)}
 .btn.sm{padding:6px 11px;font-size:12px}
 .btn.save{background:var(--mut2)}
 .btn.save.draft{background:var(--amber)}
@@ -164,6 +180,15 @@ td input:focus,td select:focus{border-color:var(--red);background:rgba(255,255,2
 .modal label.fl{flex:1 1 260px;min-width:240px;font-size:12.5px}
 .modal label.fl input,.modal label.fl select{width:100%;padding:11px 12px;font-size:14.5px}
 .modal .card{padding:20px}
+.fotobox{position:relative;width:64px;height:64px;flex:none}
+.fotobox .circ{width:64px;height:64px;border-radius:50%;overflow:hidden;background:var(--panelh);
+  border:2px solid var(--line2);display:flex;align-items:center;justify-content:center;cursor:pointer;
+  color:var(--mut);font-size:24px}
+.fotobox .circ img{width:100%;height:100%;object-fit:cover}
+.fotobox input[type=file]{display:none}
+.fotobox .rm{position:absolute;bottom:-4px;right:-4px;background:var(--red);color:#fff;border:2px solid var(--panel);
+  border-radius:50%;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.savebtn-ok{background:var(--grn)!important;box-shadow:0 6px 18px rgba(61,220,132,.4)!important}
 .xrow{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .close{cursor:pointer;font-size:22px;color:var(--mut);background:none;border:none}
 .searchcard{cursor:pointer;transition:transform .1s}
@@ -371,7 +396,7 @@ var NUMCOLS={
   custos:['valor']
 };
 var ALLOWED={
-  colaboradores:['id','empresa','nome','cpf','rg','nascimento','funcao','nivel','telefone','admissao','salario','cache','diaria','passagem','email','endereco','cidade','cep','banco','agencia','tipo_conta','num_conta','pix','mei','contrato','tipo_contrato','data_desligamento','exp_efetivado','fim_experiencia','aso','contrato_cp','nr06','nr10','nr11','nr18','nr18_plat','nr35','os_seg','ficha_epi','nada_consta','emergencia','ativo','atualizado_em'],
+  colaboradores:['id','empresa','nome','foto','cpf','rg','nascimento','funcao','setor','nivel','telefone','admissao','salario','cache','diaria','passagem','email','endereco','cidade','cep','banco','agencia','tipo_conta','num_conta','pix','mei','contrato','tipo_contrato','data_desligamento','exp_cont_45','exp_efetivado','fim_experiencia','aso','contrato_cp','nr06','nr10','nr11','nr18','nr18_plat','nr35','os_seg','ficha_epi','nada_consta','emergencia','emergencia_nome','emergencia_parentesco','emergencia_telefone','ativo','atualizado_em'],
   rescisoes:['id','empresa','colaborador','tipo_contrato','desligamento','tipo_desligamento','tipo_doc','multa_rescisoria','valor_multa_rescisoria','multa_paga','valor_complementar','valor_fgts_mensal','parcelado_pj','parcelas_pj','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   ferias:['id','empresa','colaborador','inicio','fim','dias','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   folha:['id','empresa','competencia','qtd','liquido','gratif','total','atualizado_em'],
@@ -478,7 +503,9 @@ function vencInfo(c,def){
 function colabTemAlerta(c){
   for(var i=0;i<NR_DEFS.length;i++){ var vi=vencInfo(c,NR_DEFS[i]); if(vi.st.cls==='c-crit'||vi.st.cls==='c-warn') return true; }
   if(!isYes(c.exp_efetivado)){
-    var s45=vencStatus(addDays(c.admissao,45)); if(s45.cls==='c-crit'||s45.cls==='c-warn') return true;
+    if(!isYes(c.exp_cont_45)){
+      var s45=vencStatus(addDays(c.admissao,45)); if(s45.cls==='c-crit'||s45.cls==='c-warn') return true;
+    }
     var s90=vencStatus(addDays(c.admissao,90)); if(s90.cls==='c-crit'||s90.cls==='c-warn') return true;
   }
   return false;
@@ -504,6 +531,7 @@ var TAB = 'dashboard';
 var SORT_STATE = {}; // {rescisoes:{key:'colaborador',dir:1}, ferias:{...}, ...}
 var COLAB_SUB = 'pessoais';
 var COLAB_STATUS = 'ativos';
+var COLAB_SHOW_TOTAIS = false;
 var CAL_TODAY = new Date();
 var CAL_YEAR = CAL_TODAY.getFullYear();
 var CAL_MONTH = CAL_TODAY.getMonth(); // 0-indexado
@@ -660,9 +688,13 @@ function viewColab(){
   h+='<div class="toolbar">';
   h+='<input id="colabSearch" placeholder="🔎 Buscar por nome, CPF, função..." style="min-width:280px" oninput="renderColabList()">';
   h+='<select id="colabEmp" onchange="renderColabList()"><option value="">Todas empresas</option>'+empOptions()+'</select>';
+  h+='<select id="colabSetorFiltro" onchange="renderColabList()"><option value="">Todos os setores</option>'+setorOptions()+'</select>';
   h+='<button class="btn" onclick="newColab()">+ Novo colaborador</button>';
+  h+='<button class="btn ghost'+(COLAB_SHOW_TOTAIS?' active':'')+'" onclick="toggleColabTotais()">📊 '+(COLAB_SHOW_TOTAIS?'Ocultar totais':'Ver totais')+'</button>';
   h+='<div class="right flex"><button class="btn ghost sm" onclick="exportJSON()">⬇ Exportar JSON</button><button class="btn ghost sm" onclick="window.print()">🖨 PDF</button></div>';
   h+='</div>';
+
+  h+='<div id="colabTotais"></div>';
 
   // aniversariantes (só no modo ativos)
   if(aniv.length && COLAB_STATUS==='ativos'){
@@ -680,29 +712,87 @@ function empOptions(){
   var set={}; STORE.colaboradores.forEach(function(c){ if(c.empresa)set[c.empresa]=1; });
   return Object.keys(set).map(function(e){return '<option>'+esc(e)+'</option>';}).join('');
 }
-function renderColabList(){
+function setorOptions(){
+  return SETOR_OPTS.map(function(e){return '<option>'+esc(e)+'</option>';}).join('');
+}
+function colabFilteredList(){
   var q=(document.getElementById('colabSearch')||{}).value||'';
   var emp=(document.getElementById('colabEmp')||{}).value||'';
+  var setor=(document.getElementById('colabSetorFiltro')||{}).value||'';
   q=q.toLowerCase();
   var base=STORE.colaboradores.filter(function(c){ return (COLAB_STATUS==='inativos')? !isColabAtivo(c) : isColabAtivo(c); });
-  var list=base.filter(function(c){
+  return base.filter(function(c){
     if(emp && c.empresa!==emp)return false;
+    if(setor && c.setor!==setor)return false;
     if(!q)return true;
     return ((c.nome||'')+' '+(c.cpf||'')+' '+(c.funcao||'')).toLowerCase().indexOf(q)>=0;
   });
+}
+function toggleColabTotais(){ COLAB_SHOW_TOTAIS=!COLAB_SHOW_TOTAIS; render(); }
+function renderColabTotais(){
+  var el=document.getElementById('colabTotais'); if(!el) return;
+  if(!COLAB_SHOW_TOTAIS){ el.innerHTML=''; return; }
+  var list=colabFilteredList();
+  var totalClt=0, totalPj=0;
+  var porSetor={}, porEmpresa={};
+  list.forEach(function(c){
+    var tc=(''+(c.tipo_contrato||'')).toUpperCase().trim();
+    if(tc==='CLT')totalClt++; else if(tc==='PJ')totalPj++;
+    var st=(c.setor||'').trim()||'— sem setor —';
+    porSetor[st]=(porSetor[st]||0)+1;
+    var em=(c.empresa||'').trim()||'— sem empresa —';
+    porEmpresa[em]=(porEmpresa[em]||0)+1;
+  });
+  var semTipo=list.length-totalClt-totalPj;
+  var setorArr=Object.keys(porSetor).map(function(k){return {k:k,v:porSetor[k]};}).sort(function(a,b){return b.v-a.v||a.k.localeCompare(b.k);});
+  var empresaArr=Object.keys(porEmpresa).map(function(k){return {k:k,v:porEmpresa[k]};}).sort(function(a,b){return b.v-a.v||a.k.localeCompare(b.k);});
+  var qEl=document.getElementById('colabSearch'), empEl=document.getElementById('colabEmp'), setorEl=document.getElementById('colabSetorFiltro');
+  var qv=qEl?qEl.value:'', empv=empEl?empEl.value:'', setorv=setorEl?setorEl.value:'';
+  var ctxBits=[COLAB_STATUS==='inativos'?'inativos':'ativos'];
+  if(empv)ctxBits.push(esc(empv));
+  if(setorv)ctxBits.push(esc(setorv));
+  if(qv)ctxBits.push('busca: "'+esc(qv)+'"');
+  var h='<div class="card" style="margin-bottom:16px;border-top:2px solid var(--blue)">';
+  h+='<div class="section-title">📊 Totalização — '+ctxBits.join(' · ')+'</div>';
+  h+='<div class="section-sub">Os números abaixo respeitam os filtros de busca/empresa/setor/status aplicados acima.</div>';
+  h+='<div class="kpis" style="margin-bottom:14px">';
+  h+=kpi('Total de colaboradores',list.length,'no filtro atual',true);
+  h+=kpi('Total CLT',totalClt,'contrato CLT');
+  h+=kpi('Total PJ',totalPj,'contrato PJ');
+  if(semTipo>0) h+=kpi('Sem tipo definido',semTipo,'tipo de contrato não informado');
+  h+='</div>';
+  h+='<div class="flex" style="gap:22px;flex-wrap:wrap;align-items:flex-start">';
+  h+='<div style="flex:1;min-width:240px"><div class="section-title" style="margin-bottom:8px">Total por setor</div>';
+  if(setorArr.length){ setorArr.forEach(function(s){ h+='<div class="venc-line"><span>'+esc(s.k)+'</span><span class="chip c-info">'+s.v+'</span></div>'; }); }
+  else h+='<div class="muted" style="font-size:12px">Nenhum colaborador no filtro atual.</div>';
+  h+='</div>';
+  h+='<div style="flex:1;min-width:240px"><div class="section-title" style="margin-bottom:8px">Total por empresa</div>';
+  if(empresaArr.length){ empresaArr.forEach(function(e){ h+='<div class="venc-line"><span>'+esc(e.k)+'</span><span class="chip c-info">'+e.v+'</span></div>'; }); }
+  else h+='<div class="muted" style="font-size:12px">Nenhum colaborador no filtro atual.</div>';
+  h+='</div>';
+  h+='</div></div>';
+  el.innerHTML=h;
+}
+function renderColabList(){
+  var list=colabFilteredList();
   list.sort(function(a,b){return (a.nome||'').localeCompare(b.nome||'');});
   var h='';
   list.forEach(function(c){
     var alert=false;
     alert=colabTemAlerta(c);
+    var thumb=c.foto
+      ? '<img src="'+esc(c.foto)+'" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex:none">'
+      : '<span style="width:28px;height:28px;border-radius:50%;background:var(--panelh);display:flex;align-items:center;justify-content:center;flex:none;font-size:13px;color:var(--mut)">👤</span>';
     h+='<div class="card searchcard" onclick="openColab(\''+c.id+'\')">';
-    h+='<div class="flex" style="justify-content:space-between"><span class="nm">'+esc(c.nome||'(sem nome)')+'</span>'+(alert?'<span class="chip c-warn">⚠ venc.</span>':'')+'</div>';
-    h+='<div class="fn">'+esc(c.funcao||'—')+'</div>';
-    h+='<div style="margin-top:8px" class="flex">'+empChip(c.empresa)+'<span class="muted" style="font-size:11px">'+esc(c.cidade||'')+'</span></div>';
+    h+='<div class="flex" style="justify-content:space-between;align-items:center;gap:8px">'+thumb+'<span class="nm" style="flex:1">'+esc(c.nome||'(sem nome)')+'</span>'+(alert?'<span class="chip c-warn">⚠ venc.</span>':'')+'</div>';
+    h+='<div class="fn">'+esc(c.funcao||'—')+(c.setor?' <span class="muted" style="font-size:11px">· '+esc(c.setor)+'</span>':'')+'</div>';
+    var admOk=c.admissao&&c.admissao!=='-';
+    h+='<div style="margin-top:8px" class="flex">'+empChip(c.empresa)+'<span class="muted" style="font-size:11px">'+(admOk?'Admissão: '+esc(fmtD(c.admissao)):'')+'</span></div>';
     h+='</div>';
   });
   if(!list.length)h='<div class="muted" style="padding:20px">Nenhum colaborador encontrado.</div>';
   document.getElementById('colabList').innerHTML=h;
+  renderColabTotais();
 }
 
 function newColab(){
@@ -718,16 +808,226 @@ function openColab(id){
 }
 function colabSub(s){ COLAB_SUB=s; var c=find('colaboradores',window._curColab); document.getElementById('modal').innerHTML=colabModal(c); }
 
+/* Migra o antigo campo único "emergencia" (ex.: "VANESSA (FILHA) 11 95580-3606")
+   para os 3 campos separados, só quando eles ainda estiverem vazios. Não salva
+   sozinho — só preenche em memória; a gravação acontece quando o usuário edita
+   ou clica em Salvar. */
+function migrateEmergencia(c){
+  if(!c || (c.emergencia_nome||c.emergencia_parentesco||c.emergencia_telefone)) return;
+  var old=(c.emergencia||'').trim(); if(!old) return;
+  var m=old.match(/^(.*?)\(([^)]*)\)\s*(.*)$/);
+  if(m){
+    c.emergencia_nome=(m[1]||'').trim();
+    c.emergencia_parentesco=(m[2]||'').trim();
+    c.emergencia_telefone=(m[3]||'').trim();
+  } else {
+    c.emergencia_nome=old;
+  }
+}
+function colabFotoBox(c){
+  var inner = c.foto
+    ? '<img src="'+esc(c.foto)+'" alt="">'
+    : '👤';
+  var h='<div class="fotobox">';
+  h+='<div class="circ" title="Clique para adicionar/trocar a foto" onclick="document.getElementById(\'fotoInput\').click()">'+inner+'</div>';
+  h+='<input type="file" id="fotoInput" accept="image/*" onchange="handleFotoUpload(\''+c.id+'\',this)">';
+  if(c.foto) h+='<div class="rm" title="Remover foto" onclick="event.stopPropagation();removerFoto(\''+c.id+'\')">×</div>';
+  h+='</div>';
+  return h;
+}
+function handleFotoUpload(id,input){
+  var file=input.files&&input.files[0]; if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var img=new Image();
+    img.onload=function(){
+      var maxDim=320;
+      var w=img.width,hh=img.height;
+      if(w>hh && w>maxDim){ hh=Math.round(hh*maxDim/w); w=maxDim; }
+      else if(hh>maxDim){ w=Math.round(w*maxDim/hh); hh=maxDim; }
+      var canvas=document.createElement('canvas');
+      canvas.width=w; canvas.height=hh;
+      canvas.getContext('2d').drawImage(img,0,0,w,hh);
+      var dataUrl=canvas.toDataURL('image/jpeg',0.82);
+      upd('colaboradores',id,'foto',dataUrl);
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function removerFoto(id){ upd('colaboradores',id,'foto',''); }
+/* ===== Campo de data robusto: DD / MM / AAAA em 3 caixas separadas =====
+   Substitui o <input type="date"> nativo, que em vários navegadores/celulares
+   embaralha a digitação do ano. Cada caixa só aceita números, avança sozinha
+   para a próxima ao completar, volta com Backspace quando vazia, seleciona
+   tudo ao focar (para sobrescrever direto) e aceita colar uma data inteira. */
+function dateTrio(wrapId,value,onchangeCode,disabled,err){
+  var dis=disabled?' disabled':'';
+  var v=(''+(value||'')).slice(0,10);
+  var pd='',pm='',pa='';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v)){ pa=v.slice(0,4); pm=v.slice(5,7); pd=v.slice(8,10); }
+  var idAttr=wrapId?' id="'+esc(wrapId)+'"':'';
+  var common=' inputmode="numeric" pattern="[0-9]*" autocomplete="off" onfocus="this.select()" onkeydown="dtKeydown(event,this)"'+dis;
+  return '<div class="datetrio'+(err?' err':'')+'"'+idAttr+' data-onchange="'+esc(onchangeCode||'')+'" onpaste="dtPaste(event,this)">'+
+    '<input type="text" maxlength="2" class="dtd" aria-label="Dia" placeholder="00" value="'+esc(pd)+'" oninput="dtInput(this,2)"'+common+'>'+
+    '<span class="dtsep">/</span>'+
+    '<input type="text" maxlength="2" class="dtm" aria-label="Mês" placeholder="00" value="'+esc(pm)+'" oninput="dtInput(this,2)"'+common+'>'+
+    '<span class="dtsep">/</span>'+
+    '<input type="text" maxlength="4" class="dta" aria-label="Ano" placeholder="0000" value="'+esc(pa)+'" oninput="dtInput(this,4)"'+common+'>'+
+  '</div>';
+}
+function dtInput(el,max){
+  var digits=el.value.replace(/\D/g,'').slice(0,max);
+  el.value=digits;
+  if(digits.length===max){
+    var next=dtSibling(el,1);
+    if(next){ next.focus(); next.select(); }
+  }
+  dtSync(el);
+}
+function dtKeydown(ev,el){
+  if(ev.key==='Backspace' && el.value===''){
+    var prev=dtSibling(el,-1);
+    if(prev){ ev.preventDefault(); prev.value=prev.value.slice(0,-1); prev.focus(); dtSync(prev); }
+    return;
+  }
+  if((ev.key==='ArrowLeft') && el.selectionStart===0 && el.selectionEnd===0){
+    var p=dtSibling(el,-1); if(p){ ev.preventDefault(); p.focus(); p.setSelectionRange(p.value.length,p.value.length); }
+    return;
+  }
+  if((ev.key==='ArrowRight') && el.selectionStart===el.value.length && el.selectionEnd===el.value.length){
+    var n=dtSibling(el,1); if(n){ ev.preventDefault(); n.focus(); n.setSelectionRange(0,0); }
+    return;
+  }
+  if(ev.key==='/'||ev.key===' '){
+    var n2=dtSibling(el,1); if(n2){ ev.preventDefault(); n2.focus(); n2.select(); }
+    return;
+  }
+}
+function dtSibling(el,dir){
+  var wrap=el.closest('.datetrio'); if(!wrap) return null;
+  var inputs=Array.prototype.slice.call(wrap.querySelectorAll('input'));
+  var idx=inputs.indexOf(el);
+  var target=inputs[idx+dir];
+  return target||null;
+}
+function dtPaste(ev,wrap){
+  var text=(ev.clipboardData||window.clipboardData).getData('text');
+  var digits=(text||'').replace(/\D/g,'');
+  if(!digits) return;
+  ev.preventDefault();
+  var inputs=wrap.querySelectorAll('input');
+  if(digits.length>=8){
+    inputs[0].value=digits.slice(0,2); inputs[1].value=digits.slice(2,4); inputs[2].value=digits.slice(4,8);
+  } else if(digits.length===6){
+    inputs[0].value=digits.slice(0,2); inputs[1].value=digits.slice(2,4); inputs[2].value='20'+digits.slice(4,6);
+  } else {
+    var el=ev.target, max=el.className.indexOf('dta')>=0?4:2;
+    el.value=digits.slice(0,max);
+  }
+  dtSync(inputs[2]);
+  inputs[2].focus();
+}
+function dtReadISO(wrap){
+  if(typeof wrap==='string') wrap=document.getElementById(wrap);
+  if(!wrap) return '';
+  var ddEl=wrap.querySelector('.dtd'),mmEl=wrap.querySelector('.dtm'),aaEl=wrap.querySelector('.dta');
+  if(!ddEl||!mmEl||!aaEl) return '';
+  var dd=ddEl.value,mm=mmEl.value,aa=aaEl.value;
+  if(!dd||!mm||!aa||(''+aa).length<4) return '';
+  var ddN=parseInt(dd,10),mmN=parseInt(mm,10),aaN=parseInt(aa,10);
+  if(!ddN||!mmN||!aaN) return '';
+  var iso=aaN+'-'+('0'+mmN).slice(-2)+'-'+('0'+ddN).slice(-2);
+  var chk=new Date(iso+'T00:00:00');
+  if(isNaN(chk.getTime())||chk.getDate()!==ddN||(chk.getMonth()+1)!==mmN) return '';
+  return iso;
+}
+function dtClear(wrapId){
+  var wrap=document.getElementById(wrapId); if(!wrap)return;
+  ['.dtd','.dtm','.dta'].forEach(function(s){ var e=wrap.querySelector(s); if(e)e.value=''; });
+}
+function dtSync(el){
+  var wrap=el.closest('.datetrio'); if(!wrap) return;
+  var iso=dtReadISO(wrap); if(!iso) return;
+  var code=wrap.getAttribute('data-onchange'); if(!code) return;
+  try{ (new Function('value',code))(iso); }catch(e){ console.error('dtSync',e); }
+}
+
+/* ================= VALIDAÇÃO — CAMPOS OBRIGATÓRIOS DO COLABORADOR ================= */
+var SETOR_OPTS=['CONTROLE DE QUALIDADE','ESTOQUE','CONSERVAÇÃO','COMERCIAL','FINANCEIRO','DEPARTAMENTO PESSOAL - RH','EXTERNA','FROTA','OPERACIONAL INTERNO','LABORATÓRIO'];
+var COLAB_REQUIRED=[
+  ['empresa','Empresa'],
+  ['nome','Nome completo'],
+  ['cpf','CPF'],
+  ['nascimento','Data de nascimento'],
+  ['telefone','Telefone'],
+  ['admissao','Data de admissão'],
+  ['funcao','Função'],
+  ['setor','Setor'],
+  ['tipo_contrato','Tipo de contrato'],
+  ['salario','Remuneração'],
+  ['aso','Data do ASO']
+];
+function colabMissingRequired(c){
+  if(!c) return [];
+  var out=[];
+  COLAB_REQUIRED.forEach(function(f){
+    var key=f[0], v=c[key];
+    var empty=(v===null||v===undefined||(''+v).trim()==='');
+    if(key==='salario'){
+      var n=parseFloat(v);
+      empty = empty || isNaN(n) || n<=0;
+    }
+    if(empty) out.push({key:key,label:f[1]});
+  });
+  return out;
+}
+var _colabErrTimer=null;
+function showColabReqWarn(missing){
+  var el=document.getElementById('errToast');
+  if(!el){
+    el=document.createElement('div');
+    el.id='errToast';
+    el.style.cssText='position:fixed;top:16px;right:16px;z-index:999;background:rgba(225,6,0,.16);'+
+      'color:#ff8b96;border:1px solid rgba(255,31,68,.5);padding:10px 14px;border-radius:10px;'+
+      'font-size:12.5px;font-weight:700;box-shadow:var(--shadow);max-width:340px';
+    document.body.appendChild(el);
+  }
+  var labels=missing.map(function(m){return m.label;}).join(', ');
+  el.textContent='🚫 Não é possível salvar — preencha: '+labels;
+  el.style.display='block';
+  clearTimeout(_colabErrTimer);
+  _colabErrTimer=setTimeout(function(){ el.style.display='none'; },6000);
+}
+/* mapa (key->true) dos campos obrigatórios faltando do colaborador que está aberto no modal —
+   recalculado a cada render de colabModal() e usado por fld()/fldSel()/fldOpts() para pintar a caixa de vermelho */
+var COLAB_MISS_MAP={};
+
 function fld(c,key,label,type){
   type=type||'text';
-  return '<label class="fl">'+esc(label)+
-    '<input type="'+type+'" value="'+esc(c[key]===null||c[key]===undefined?'':c[key])+'" onchange="upd(\'colaboradores\',\''+c.id+'\',\''+key+'\',this.value)"></label>';
+  var raw=(c[key]===null||c[key]===undefined?'':c[key]);
+  var isReq=!!COLAB_MISS_MAP[key];
+  var reqMark=isReq?' <span class="req-mark">⚠ obrigatório</span>':'';
+  if(type==='date'){
+    var code="upd('colaboradores','"+c.id+"','"+key+"',value)";
+    return '<label class="fl'+(isReq?' fl-err':'')+'">'+esc(label)+reqMark+dateTrio('',raw,code,false,isReq)+'</label>';
+  }
+  return '<label class="fl'+(isReq?' fl-err':'')+'">'+esc(label)+reqMark+
+    '<input type="'+type+'" value="'+esc(raw)+'" onchange="upd(\'colaboradores\',\''+c.id+'\',\''+key+'\',this.value)"></label>';
 }
 
 function colabModal(c){
   window._curColab=c.id;
+  migrateEmergencia(c);
+  var _missing=colabMissingRequired(c);
+  COLAB_MISS_MAP={};
+  _missing.forEach(function(m){ COLAB_MISS_MAP[m.key]=true; });
   var h='<div class="xrow"><h2>'+esc(c.nome||'Novo colaborador')+'</h2><button class="close" onclick="closeOv()">×</button></div>';
-  h+='<div class="flex" style="margin-bottom:6px">'+empChip(c.empresa)+'<span class="muted">'+esc(c.funcao||'')+'</span></div>';
+  h+='<div class="flex" style="margin-bottom:6px;align-items:center;gap:12px">'+colabFotoBox(c)+'<div><div class="flex">'+empChip(c.empresa)+'<span class="muted">'+esc(c.funcao||'')+'</span></div></div></div>';
+  if(_missing.length>0){
+    h+='<div class="colab-missing-banner">🚫 <b>Não é possível salvar este colaborador.</b> Faltam os dados obrigatórios: '+
+       _missing.map(function(m){return esc(m.label);}).join(', ')+'. Preencha as caixas destacadas em vermelho (podem estar em outras abas abaixo).</div>';
+  }
   h+='<div class="subtabs">';
   h+='<button class="'+(COLAB_SUB==='pessoais'?'active':'')+'" onclick="colabSub(\'pessoais\')">Dados Pessoais</button>';
   h+='<button class="'+(COLAB_SUB==='contratuais'?'active':'')+'" onclick="colabSub(\'contratuais\')">Dados Contratuais</button>';
@@ -745,7 +1045,11 @@ function colabModal(c){
     h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Contato</div><div class="formgrid">';
     h+=fld(c,'telefone','Telefone');
     h+=fld(c,'email','E-mail');
-    h+=fld(c,'emergencia','Contato de emergência');
+    h+='</div></div>';
+    h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Contato de emergência</div><div class="formgrid">';
+    h+=fld(c,'emergencia_nome','Nome');
+    h+=fldOpts(c,'emergencia_parentesco','Parentesco',['Cônjuge','Mãe','Pai','Filho(a)','Irmão(ã)','Namorado(a)','Avô(ó)','Tio(a)','Primo(a)','Amigo(a)','Outro']);
+    h+=fld(c,'emergencia_telefone','Telefone');
     h+='</div></div>';
     h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Endereço</div><div class="formgrid">';
     h+=fld(c,'endereco','Endereço');
@@ -759,6 +1063,7 @@ function colabModal(c){
     h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Vínculo</div><div class="formgrid">';
     h+=fld(c,'admissao','Data de admissão','date');
     h+=fld(c,'funcao','Função');
+    h+=fldOpts(c,'setor','Setor',SETOR_OPTS);
     h+=fld(c,'nivel','Nível');
     h+=fldOpts(c,'tipo_contrato','Tipo de contrato',['CLT','PJ']);
     if(isYes2(c.tipo_contrato,'PJ')) h+=fld(c,'mei','CNPJ (PJ)'); else h+=fld(c,'mei','MEI - CNPJ');
@@ -785,21 +1090,36 @@ function colabModal(c){
     var admissao=c.admissao;
     var exp90=addDays(admissao,90), exp45=addDays(admissao,45);
     var efetivado=isYes(c.exp_efetivado);
+    var cont45Raw=(''+(c.exp_cont_45||'')).toUpperCase().trim();
+    var cont45Sim=cont45Raw==='SIM';
+    var cont45Nao=cont45Raw==='NÃO';
     h+='<div class="muted" style="margin-bottom:10px;font-size:12px">Status calculado automaticamente (vermelho = vencido, âmbar = vence em ≤30 dias). ASO vale 12 meses; todas as NRs valem 2 anos; a validade é calculada a partir da data informada.</div>';
     h+='<div class="card" style="margin-bottom:14px"><div class="section-title">Período de experiência</div>';
     if(admissao){
       h+='<div class="venc-line"><span>Admissão</span><span class="muted">'+fmtD(admissao)+'</span></div>';
       var s45=vencStatus(exp45), s90=vencStatus(exp90);
-      if(efetivado){
-        h+='<div class="venc-line"><span>1º período — Admissão +45d <span class="muted">'+fmtD(exp45)+'</span></span><span class="chip c-ok">Efetivado ✓</span></div>';
-        h+='<div class="venc-line"><span>Fim experiência — Admissão +90d <span class="muted">'+fmtD(exp90)+'</span></span><span class="chip c-ok">Efetivado ✓</span></div>';
+      // ---- 1º período (0-45 dias) ----
+      if(efetivado||cont45Sim){
+        h+='<div class="venc-line"><span>1º período — Admissão +45d <span class="muted">'+fmtD(exp45)+'</span></span><span class="chip c-ok">Vai seguir ✓</span></div>';
+      } else if(cont45Nao){
+        h+='<div class="venc-line"><span>1º período — Admissão +45d <span class="muted">'+fmtD(exp45)+'</span></span><span class="chip c-crit">Não seguiu</span></div>';
       } else {
         h+='<div class="venc-line"><span>1º período — Admissão +45d <span class="muted">'+fmtD(exp45)+'</span></span><span class="chip '+s45.cls+'">'+s45.label+'</span></div>';
+      }
+      // pergunta 1: completou os 45 dias — vai seguir para os +45 dias seguintes (até completar 90)?
+      if(!efetivado&&(s45.cls==='c-crit'||s45.cls==='c-warn'||cont45Raw)){
+        h+='<div class="venc-line"><span>Completou os 45 dias — vai seguir para os <b>+45 dias</b> seguintes? <span class="muted" style="font-size:11px">(1º período de experiência)</span></span>'+
+           '<select onchange="upd(\'colaboradores\',\''+c.id+'\',\'exp_cont_45\',this.value)"><option value=""'+(!cont45Raw?' selected':'')+'>—</option><option value="SIM"'+(cont45Sim?' selected':'')+'>SIM</option><option value="NÃO"'+(cont45Nao?' selected':'')+'>NÃO</option></select></div>';
+      }
+      // ---- fim do período de experiência (90 dias) ----
+      if(efetivado){
+        h+='<div class="venc-line"><span>Fim experiência — Admissão +90d <span class="muted">'+fmtD(exp90)+'</span></span><span class="chip c-ok">Efetivado ✓</span></div>';
+      } else {
         h+='<div class="venc-line"><span>Fim experiência — Admissão +90d <span class="muted">'+fmtD(exp90)+'</span></span><span class="chip '+s90.cls+'">'+s90.label+'</span></div>';
       }
-      // pergunta de seguimento assim que qualquer um dos marcos (45/90) estiver vencido/vencendo, ou já efetivado
-      if(s45.cls==='c-crit'||s45.cls==='c-warn'||s90.cls==='c-crit'||s90.cls==='c-warn'||efetivado){
-        h+='<div class="venc-line"><span>Dar seguimento ao contrato? <span class="muted" style="font-size:11px">(efetivar — silencia os alertas de 45 e 90 dias)</span></span>'+
+      // pergunta 2: finalizou os 90 dias — vai continuar o contrato (efetivar)?
+      if(s90.cls==='c-crit'||s90.cls==='c-warn'||efetivado){
+        h+='<div class="venc-line"><span>Finalizou os 90 dias — vai <b>continuar o contrato</b> (efetivar)? <span class="muted" style="font-size:11px">(silencia os alertas do período de experiência)</span></span>'+
            '<select onchange="upd(\'colaboradores\',\''+c.id+'\',\'exp_efetivado\',this.value)"><option value="NÃO"'+(!efetivado?' selected':'')+'>NÃO</option><option value="SIM"'+(efetivado?' selected':'')+'>SIM</option></select></div>';
       }
     } else {
@@ -822,22 +1142,54 @@ function colabModal(c){
     NR_DEFS.forEach(function(def){ h+='<div><b>'+def.label+':</b> '+def.desc+' <span class="muted">(validade '+(def.meses/12)+' ano'+(def.meses>12?'s':'')+')</span></div>'; });
     h+='</div></div>';
   }
-  h+='<div class="flex" style="margin-top:18px"><button class="btn ghost" onclick="delRow(\'colaboradores\',\''+c.id+'\')">🗑 Excluir</button><span class="right muted" id="savehint">Alterações salvas automaticamente</span></div>';
+  h+='<div class="flex" style="margin-top:18px"><button class="btn ghost" onclick="delRow(\'colaboradores\',\''+c.id+'\')">🗑 Excluir</button>'+
+     '<button class="btn save" id="btnSalvarColab" style="margin-left:8px" onclick="salvarColabAgora(\''+c.id+'\')">💾 Salvar</button>'+
+     '<span class="right muted" id="savehint">Alterações salvas automaticamente</span></div>';
   return h;
+}
+function salvarColabAgora(id){
+  var r=find('colaboradores',id); if(!r)return;
+  var missing=colabMissingRequired(r);
+  var btn=document.getElementById('btnSalvarColab');
+  var hint=document.getElementById('savehint');
+  if(missing.length>0){
+    showColabReqWarn(missing);
+    if(document.getElementById('overlay').className.indexOf('show')>=0){ document.getElementById('modal').innerHTML=colabModal(r); }
+    btn=document.getElementById('btnSalvarColab');
+    if(btn){ btn.textContent='🚫 Faltam dados!'; btn.classList.add('savebtn-err'); }
+    var hint2=document.getElementById('savehint');
+    if(hint2){ hint2.textContent='Preencha os campos obrigatórios em vermelho'; }
+    setTimeout(function(){
+      var b=document.getElementById('btnSalvarColab');
+      if(b){ b.textContent='💾 Salvar'; b.classList.remove('savebtn-err'); }
+    },2500);
+    return;
+  }
+  persist('colaboradores',r);
+  if(btn){ btn.textContent='✓ Salvo!'; btn.classList.add('savebtn-ok'); }
+  if(hint){ hint.textContent='Salvo agora'; }
+  setTimeout(function(){
+    if(btn){ btn.textContent='💾 Salvar'; btn.classList.remove('savebtn-ok'); }
+    if(hint){ hint.textContent='Alterações salvas automaticamente'; }
+  },2000);
 }
 function isYes2(v,target){ return (''+(v||'')).toUpperCase().trim()===target; }
 function fldOpts(c,key,label,opts){
   var cur=c[key]||''; var found=false; var o='<option value="">—</option>';
   opts.forEach(function(e){ var s=(e===cur)?' selected':''; if(s)found=true; o+='<option'+s+'>'+esc(e)+'</option>'; });
   if(cur&&!found)o+='<option selected>'+esc(cur)+'</option>';
-  return '<label class="fl">'+esc(label)+'<select onchange="upd(\'colaboradores\',\''+c.id+'\',\''+key+'\',this.value)">'+o+'</select></label>';
+  var isReq=!!COLAB_MISS_MAP[key];
+  var reqMark=isReq?' <span class="req-mark">⚠ obrigatório</span>':'';
+  return '<label class="fl'+(isReq?' fl-err':'')+'">'+esc(label)+reqMark+'<select onchange="upd(\'colaboradores\',\''+c.id+'\',\''+key+'\',this.value)">'+o+'</select></label>';
 }
 function fldSel(c,key,label){
   var emps=['ILED BRASILIA','ILED SÃO PAULO','NEW ILED','RED PRODUCOES','X-LED PRODUCOES','MT PRODUCOES']; var cur=c[key]||'';
   var found=false; var opts='';
   emps.forEach(function(e){ var sel=(e===cur)?' selected':''; if(sel)found=true; opts+='<option'+sel+'>'+e+'</option>'; });
   if(cur&&!found)opts='<option selected>'+esc(cur)+'</option>'+opts;
-  return '<label class="fl">'+label+'<select onchange="upd(\'colaboradores\',\''+c.id+'\',\''+key+'\',this.value)"><option value="">—</option>'+opts+'</select></label>';
+  var isReq=!!COLAB_MISS_MAP[key];
+  var reqMark=isReq?' <span class="req-mark">⚠ obrigatório</span>':'';
+  return '<label class="fl'+(isReq?' fl-err':'')+'">'+label+reqMark+'<select onchange="upd(\'colaboradores\',\''+c.id+'\',\''+key+'\',this.value)"><option value="">—</option>'+opts+'</select></label>';
 }
 
 /* ================= TABELAS GENÉRICAS ================= */
@@ -922,8 +1274,8 @@ function viewGeneric(t){
   h+='<div class="xrow"><div><div class="section-title">'+TITLES[t][0]+'</div><div class="muted" style="font-size:12px">'+TITLES[t][1]+'</div></div>';
   if(t==='ferias'){
     h+='<div class="flex">'+
-       '<label class="fl">De<input type="date" id="ferFrom" onchange="filterFerias()"></label>'+
-       '<label class="fl">Até<input type="date" id="ferTo" onchange="filterFerias()"></label>'+
+       '<label class="fl">De'+dateTrio('ferFrom','',"filterFerias()")+'</label>'+
+       '<label class="fl">Até'+dateTrio('ferTo','',"filterFerias()")+'</label>'+
        '<input id="ferName" placeholder="🔎 Colaborador" oninput="filterFerias()">'+
        '<button class="btn ghost sm" onclick="limparFerFiltro()">Limpar</button>'+
        '<button class="btn" onclick="addRow(\'ferias\')">+ Adicionar</button></div></div>';
@@ -1090,13 +1442,12 @@ function cellEditor(t,r,c){
       '<select onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"'+dis+'><option value="NÃO"'+(!yes6?' selected':'')+'>NÃO</option><option value="SIM"'+(yes6?' selected':'')+'>SIM</option></select></div>';
   }
   if(type==='date'){
-    var xon=on;
-    if(t==='rescisoes'&&key==='desligamento') xon='onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"';
     var extra='';
     if(t==='rescisoes'&&key==='vencimento'&&parcelasInfo(r)){
       extra='<div class="muted" style="font-size:9px;margin-top:2px;white-space:nowrap">vencimento da multa · parcelas ↓</div>';
     }
-    return '<input type="date" value="'+esc((''+val).slice(0,10))+'" '+xon+dis+'>'+extra;
+    var codeDate="upd('"+t+"','"+r.id+"','"+key+"',value)";
+    return dateTrio('',val,codeDate,!!locked)+extra;
   }
   if(type==='month'){ var mv=(''+val).slice(0,7); return '<input type="month" value="'+esc(mv)+'" onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value?this.value+\'-01\':\'\')"'+dis+'>'; }
   if(type==='moeda'){
@@ -1291,7 +1642,7 @@ function rescModal(r){
           else stH='<span class="chip c-warn">Vence em '+ddi+'d</span>';
           h+='<tr><td>'+(i+1)+'ª</td>'+
              '<td><input type="number" step="0.01" min="0" value="'+esc(p.valor||'')+'" onchange="updParcela(\''+r.id+'\',\''+i+'\',\'valor\',this.value)"'+dis+'></td>'+
-             '<td><input type="date" value="'+esc((''+(p.vencimento||'')).slice(0,10))+'" onchange="updParcela(\''+r.id+'\',\''+i+'\',\'vencimento\',this.value)"'+dis+'></td>'+
+             '<td>'+dateTrio('',p.vencimento,"updParcela('"+r.id+"',"+i+",'vencimento',value)",!!dis)+'</td>'+
              '<td>'+stH+'</td>'+
              '<td><input type="checkbox" '+(pgYes?'checked':'')+' onchange="updParcela(\''+r.id+'\',\''+i+'\',\'pago\',this.checked?\'SIM\':\'NÃO\')"'+dis+'></td></tr>';
         });
@@ -1321,8 +1672,8 @@ function filterTable(inp,t){
   for(var i=0;i<tb.length;i++){ tb[i].style.display = tb[i].textContent.toLowerCase().indexOf(q)>=0?'':'none'; }
 }
 function filterFerias(){
-  var from=(document.getElementById('ferFrom')||{}).value||'';
-  var to=(document.getElementById('ferTo')||{}).value||'';
+  var from=dtReadISO('ferFrom')||'';
+  var to=dtReadISO('ferTo')||'';
   var nm=((document.getElementById('ferName')||{}).value||'').toLowerCase();
   var rows=STORE.ferias;
   var trs=document.querySelectorAll('#tbl_ferias tbody tr');
@@ -1338,7 +1689,8 @@ function filterFerias(){
   }
 }
 function limparFerFiltro(){
-  ['ferFrom','ferTo','ferName'].forEach(function(id){ var e=document.getElementById(id); if(e)e.value=''; });
+  dtClear('ferFrom'); dtClear('ferTo');
+  var nmEl=document.getElementById('ferName'); if(nmEl)nmEl.value='';
   filterFerias();
 }
 function addRow(t){ var r={id:uid()}; COLS[t].forEach(function(c){r[c[0]]='';}); if(t==='rescisoes')r.tipo_doc='TRCT'; STORE[t].push(r); persist(t,r); render(); }
@@ -1362,8 +1714,8 @@ function upd(t,id,key,val){
   if(t==='ferias'&&key==='valor'){ var vn=parseFloat(val); if(!isNaN(vn))r.valor=Math.round(vn*100)/100; }
   if(t==='folha'||t==='custos'){ if(key==='liquido'||key==='gratif'){ r.total=num(r.liquido)+num(r.gratif); } }
   saveLocal(); persist(t,r);
-  // refresh modal/venc chips live for colaboradores (vencimentos, contratuais e desligamento)
-  if(t==='colaboradores'&&(COLAB_SUB==='vencimentos'||COLAB_SUB==='contratuais')&&document.getElementById('overlay').className.indexOf('show')>=0){ document.getElementById('modal').innerHTML=colabModal(r); }
+  // refresh modal/venc chips live for colaboradores (todas as abas — onchange só dispara quando o campo perde o foco, então é seguro re-renderizar)
+  if(t==='colaboradores'&&document.getElementById('overlay').className.indexOf('show')>=0){ document.getElementById('modal').innerHTML=colabModal(r); }
   /* atualiza só as células calculadas — nunca a célula que está sendo digitada, senão o campo perde o foco e "pula" no meio da data */
   if(t==='ferias'&&(key==='inicio'||key==='dias')){ refreshCell('ferias',id,'fim'); }
   if(t==='ferias'&&key==='inicio'){ refreshCell('ferias',id,'vencimento'); }
@@ -1374,6 +1726,15 @@ function upd(t,id,key,val){
 }
 function persist(t,r){
   saveLocal();
+  if(t==='colaboradores'){
+    var missing=colabMissingRequired(r);
+    if(missing.length>0){
+      // não sincroniza com o Supabase (não "salva" de verdade) enquanto faltarem os dados obrigatórios do colaborador
+      setDbStatus(false,'Faltam dados obrigatórios');
+      showColabReqWarn(missing);
+      return;
+    }
+  }
   if(sbConfigured()){ var rc=cleanRow(t,r); rc.atualizado_em=new Date().toISOString(); sbUpsert(TBL[t],rc,function(ok,err){ setDbStatus(ok,ok?'Supabase ✓ salvo':'Falha ao salvar'); if(!ok&&err){ console.warn('Supabase',err); showWarn('⚠ Falha ao salvar: '+(''+err).slice(0,180)); } }); }
 }
 function delRow(t,id){
@@ -1434,8 +1795,8 @@ function viewDashboard(){
   if(!DASH_FROM){ var d=new Date(); DASH_TO=d.toISOString().slice(0,10); d.setFullYear(d.getFullYear()-1); DASH_FROM=d.toISOString().slice(0,10); }
   var h='';
   h+='<div class="toolbar">';
-  h+='<label class="fl">De<input type="date" id="dfrom" value="'+DASH_FROM+'" onchange="DASH_FROM=this.value;render()"></label>';
-  h+='<label class="fl">Até<input type="date" id="dto" value="'+DASH_TO+'" onchange="DASH_TO=this.value;render()"></label>';
+  h+='<label class="fl">De'+dateTrio('dfrom',DASH_FROM,"DASH_FROM=value;render()")+'</label>';
+  h+='<label class="fl">Até'+dateTrio('dto',DASH_TO,"DASH_TO=value;render()")+'</label>';
   h+='<label class="fl">Empresa<select id="demp" onchange="DASH_EMP=this.value;render()">'+dashEmpOptions()+'</select></label>';
   h+='<button class="btn ghost sm" onclick="pullBtn()">↻ Atualizar dados</button>';
   var etxt = DASH_EMP?(' · '+DASH_EMP):' · Todas as empresas';
