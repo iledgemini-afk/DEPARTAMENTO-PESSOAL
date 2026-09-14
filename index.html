@@ -375,7 +375,7 @@ var ALLOWED={
   rescisoes:['id','empresa','colaborador','tipo_contrato','desligamento','tipo_desligamento','tipo_doc','multa_rescisoria','valor_multa_rescisoria','multa_paga','valor_complementar','valor_fgts_mensal','parcelado_pj','parcelas_pj','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   ferias:['id','empresa','colaborador','inicio','fim','dias','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   folha:['id','empresa','competencia','qtd','liquido','gratif','total','atualizado_em'],
-  custos:['id','empresa','competencia','descricao','valor','vencimento','financeiro','bloqueado','atualizado_em']
+  custos:['id','empresa','competencia','descricao','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em']
 };
 function isISODate(v){ return /^\d{4}-\d{2}-\d{2}/.test(''+v); }
 function cleanRow(t,src){
@@ -564,7 +564,7 @@ function calendarEventsForMonth(){
     if(!iso) return; iso=(''+iso).slice(0,10); if(!isISODate(iso)) return;
     if(!map[iso]) map[iso]=[]; map[iso].push({label:label,cls:cls||''});
   }
-  (STORE.ferias||[]).forEach(function(r){ if(!r.colaborador&&!r.vencimento) return; var paid=isYes(r.financeiro); add(r.vencimento,'FÉRIAS - '+(r.colaborador||'—')+' - '+(money(r.valor)||'—'),statusCls(r.vencimento,paid)); });
+  (STORE.ferias||[]).forEach(function(r){ if(!r.colaborador&&!r.vencimento) return; var paid=isYes(r.pasta); add(r.vencimento,'FÉRIAS - '+(r.colaborador||'—')+' - '+(money(r.valor)||'—'),statusCls(r.vencimento,paid)); });
   (STORE.rescisoes||[]).forEach(function(r){
     if(!r.colaborador&&!r.vencimento) return;
     var pinfo=parcelasInfo(r);
@@ -581,7 +581,7 @@ function calendarEventsForMonth(){
       add(r.vencimento,(r.tipo_doc||'TRCT')+' - '+(r.colaborador||'—')+' - '+(money(rescTotal(r))||'—'),statusCls(r.vencimento,isYes(r.pasta)));
     }
   });
-  (STORE.custos||[]).forEach(function(r){ if(!r.vencimento) return; var paid=!!(''+(r.financeiro||'')).trim(); add(r.vencimento,'CUSTO'+(r.descricao?(' - '+r.descricao):'')+' - '+(money(r.valor)||'—'),statusCls(r.vencimento,paid)); });
+  (STORE.custos||[]).forEach(function(r){ if(!r.vencimento) return; var paid=isYes(r.pasta); add(r.vencimento,'CUSTO'+(r.descricao?(' - '+r.descricao):'')+' - '+(money(r.valor)||'—'),statusCls(r.vencimento,paid)); });
   return map;
 }
 function calNav(delta){
@@ -863,7 +863,7 @@ var COLS = {
   ],
   custos:[
     ['empresa','Empresa','sel'],['competencia','Mês competência','month'],['descricao','Descrição do documento','text'],['valor','Valor','num'],
-    ['vencimento','Vencimento','date'],['financeiro','Entregue financeiro em','text'],['bloqueado','Concluído','lock']
+    ['vencimento','Vencimento','date'],['financeiro','Entregue financeiro em','text'],['pasta','Comprovante salvo na pasta (pago)','checkVencido'],['bloqueado','Concluído','lock']
   ]
 };
 var TITLES={rescisoes:['Controle de Rescisões','TRCT, FGTS mensal e FGTS rescisório'],
