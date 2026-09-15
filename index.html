@@ -119,7 +119,19 @@ table{border-collapse:collapse;width:100%;font-size:12.5px}
 th{
   background:var(--panelh);color:var(--mut);text-transform:uppercase;font-size:10px;
   letter-spacing:.8px;padding:9px 10px;text-align:left;position:sticky;top:0;white-space:nowrap;
+  position:relative;overflow:hidden;text-overflow:ellipsis;
 }
+th.resizable-th{padding-right:16px}
+.col-resizer{
+  position:absolute;top:0;right:0;width:10px;height:100%;cursor:col-resize;
+  touch-action:none;z-index:5;
+}
+.col-resizer::after{
+  content:'';position:absolute;top:3px;bottom:3px;right:3px;width:2px;
+  background:var(--line2);border-radius:2px;
+}
+.col-resizer:hover::after,.col-resizer.active::after{background:var(--red);width:3px}
+table.tbl-resizable{table-layout:fixed}
 td{padding:7px 10px;border-bottom:1px solid var(--line);color:var(--txt)}
 tr:nth-child(even) td{background:rgba(255,255,255,.025)}
 tr:hover td{background:rgba(255,255,255,.05)}
@@ -695,6 +707,9 @@ function render(){
   else if(TAB==='calendario') v.innerHTML=viewCalendario();
   if(TAB==='dashboard') drawCharts();
   if(TAB==='rescisoes') drawRescMotivoChart();
+  if(TAB==='rescisoes'||TAB==='ferias'||TAB==='folha'||TAB==='custos'){
+    var tb=document.getElementById('tbl_'+TAB); if(tb) makeResizable(tb);
+  }
 }
 
 /* ================= CALENDÁRIO DE VENCIMENTOS ================= */
@@ -1428,9 +1443,11 @@ function viewGeneric(t){
        '<label class="fl">Até'+dateTrio('ferTo','',"filterFerias()")+'</label>'+
        '<input id="ferName" placeholder="🔎 Colaborador" oninput="filterFerias()">'+
        '<button class="btn ghost sm" onclick="limparFerFiltro()">Limpar</button>'+
-       '<button class="btn" onclick="addRow(\'ferias\')">+ Adicionar</button></div></div>';
+       '<button class="btn" onclick="addRow(\'ferias\')">+ Adicionar</button>'+
+       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_ferias\')">↺ Larguras</button></div></div>';
   } else {
-    h+='<div class="flex"><input placeholder="🔎 Buscar" oninput="filterTable(this,\''+t+'\')"><button class="btn" onclick="addRow(\''+t+'\')">+ Adicionar</button></div></div>';
+    h+='<div class="flex"><input placeholder="🔎 Buscar" oninput="filterTable(this,\''+t+'\')"><button class="btn" onclick="addRow(\''+t+'\')">+ Adicionar</button>'+
+       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_'+t+'\')">↺ Larguras</button></div></div>';
   }
   h+='<div class="tablewrap"><table id="tbl_'+t+'">';
   if(t==='rescisoes'){
@@ -1444,6 +1461,61 @@ function viewGeneric(t){
   h+=tableRows(t);
   h+='</tbody></table></div></div>';
   return h;
+}
+/* ================= REDIMENSIONAR COLUNAS (arrastar borda do cabeçalho) ================= */
+var COLW=(function(){ try{return JSON.parse(window.localStorage.getItem('dp_iled_colw')||'{}');}catch(e){return {};} })();
+function saveColW(){ try{window.localStorage.setItem('dp_iled_colw',JSON.stringify(COLW));}catch(e){} }
+function makeResizable(table){
+  if(!table) return;
+  var tid=table.id; if(!tid) return;
+  table.classList.add('tbl-resizable');
+  var ths=table.querySelectorAll('thead th');
+  var cols=table.querySelectorAll('colgroup col');
+  ths.forEach(function(th,i){
+    /* última coluna costuma ser a de ação (excluir), sem cabeçalho — não precisa de puxador */
+    if(i===ths.length-1 && !th.textContent.trim()) return;
+    var key=tid+'_c'+i;
+    var savedW=COLW[key];
+    if(savedW){
+      if(cols[i]) cols[i].style.width=savedW+'px';
+      th.style.width=savedW+'px';
+    } else if(!cols[i]){
+      /* sem colgroup: fixa a largura atual renderizada pra não "pular" ao virar table-layout:fixed */
+      var w=th.getBoundingClientRect().width;
+      if(w>0) th.style.width=Math.round(w)+'px';
+    }
+    if(th.querySelector('.col-resizer')) return;
+    th.classList.add('resizable-th');
+    var grip=document.createElement('span');
+    grip.className='col-resizer';
+    grip.addEventListener('click',function(e){ e.stopPropagation(); });
+    grip.addEventListener('pointerdown',function(e){
+      e.preventDefault(); e.stopPropagation();
+      grip.setPointerCapture(e.pointerId);
+      grip.classList.add('active');
+      var startX=e.clientX, startW=th.getBoundingClientRect().width;
+      function onMove(ev){
+        var w=Math.max(44,Math.round(startW+(ev.clientX-startX)));
+        if(cols[i]) cols[i].style.width=w+'px';
+        th.style.width=w+'px';
+      }
+      function onUp(ev){
+        grip.releasePointerCapture(e.pointerId);
+        grip.removeEventListener('pointermove',onMove);
+        grip.removeEventListener('pointerup',onUp);
+        grip.classList.remove('active');
+        var w=cols[i]?parseFloat(cols[i].style.width):th.getBoundingClientRect().width;
+        if(w){ COLW[key]=Math.round(w); saveColW(); }
+      }
+      grip.addEventListener('pointermove',onMove);
+      grip.addEventListener('pointerup',onUp);
+    });
+    th.appendChild(grip);
+  });
+}
+function resetColW(tid){
+  Object.keys(COLW).forEach(function(k){ if(k.indexOf(tid+'_c')===0) delete COLW[k]; });
+  saveColW(); render();
 }
 /* tipos de coluna que são numéricos (comparação por valor) — os demais (texto/data ISO) comparam bem como string */
 var SORT_NUM_TYPES={moeda:1,num:1,num2:1,int:1,autodays:1};
@@ -2139,7 +2211,7 @@ function renderHistorico(){
     return ((e.colaborador||'')+' '+(e.campo||'')+' '+(e.usuario||'')+' '+(e.valor_antigo||'')+' '+(e.valor_novo||'')).toLowerCase().indexOf(q)>=0;
   });
   if(!list.length){ el.innerHTML='<div class="card muted" style="padding:14px">Nenhuma edição registrada'+((tabela||q)?' com esse filtro.':' ainda.')+'</div>'; return; }
-  var h='<div class="tablewrap"><table><thead><tr><th>Quando</th><th>Usuário</th><th>Área</th><th>Registro</th><th>Campo</th><th>De</th><th>Para</th></tr></thead><tbody>';
+  var h='<div class="tablewrap"><table id="tbl_historico"><thead><tr><th>Quando</th><th>Usuário</th><th>Área</th><th>Registro</th><th>Campo</th><th>De</th><th>Para</th></tr></thead><tbody>';
   list.slice(0,300).forEach(function(e){
     h+='<tr><td style="white-space:nowrap">'+fmtDateTime(e.quando)+'</td><td>'+esc(e.usuario||'—')+'</td><td>'+esc(areaLabel(e.tabela))+'</td>'+
        '<td>'+esc(e.colaborador||'—')+'</td><td>'+esc(fieldLabel(e.campo))+'</td>'+
@@ -2149,6 +2221,7 @@ function renderHistorico(){
   h+='</tbody></table></div>';
   if(list.length>300) h+='<div class="muted" style="font-size:11px;margin-top:6px">Mostrando as 300 mais recentes de '+list.length+' — refine a busca.</div>';
   el.innerHTML=h;
+  var tbh=document.getElementById('tbl_historico'); if(tbh) makeResizable(tbh);
 }
 
 /* ================= GRÁFICO: MOTIVOS DE DESLIGAMENTO (aba Rescisões) ================= */
