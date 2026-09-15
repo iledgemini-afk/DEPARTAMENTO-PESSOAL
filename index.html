@@ -412,14 +412,14 @@ var NUMCOLS={
   colaboradores:['salario','cache','passagem'],
   rescisoes:['valor','valor_multa_rescisoria','valor_complementar','valor_fgts_mensal'],
   ferias:['dias','valor'],
-  folha:['qtd','liquido','gratif','total'],
+  folha:['qtd','liquido','gratif','pensao','total'],
   custos:['valor']
 };
 var ALLOWED={
   colaboradores:['id','empresa','nome','foto','cpf','rg','nascimento','funcao','setor','nivel','telefone','admissao','salario','cache','diaria','passagem','email','endereco','cidade','cep','banco','agencia','tipo_conta','num_conta','pix','mei','contrato','tipo_contrato','data_desligamento','exp_cont_45','exp_efetivado','fim_experiencia','aso','contrato_cp','nr06','nr10','nr11','nr18','nr18_plat','nr35','os_seg','ficha_epi','nada_consta','emergencia','emergencia_nome','emergencia_parentesco','emergencia_telefone','ativo','atualizado_em'],
   rescisoes:['id','empresa','colaborador','tipo_contrato','desligamento','tipo_desligamento','tipo_doc','multa_rescisoria','valor_multa_rescisoria','multa_paga','valor_complementar','valor_fgts_mensal','parcelado_pj','parcelas_pj','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   ferias:['id','empresa','colaborador','inicio','fim','dias','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
-  folha:['id','empresa','competencia','qtd','liquido','gratif','total','atualizado_em'],
+  folha:['id','empresa','competencia','qtd','liquido','gratif','pensao','total','editando','atualizado_em'],
   custos:['id','empresa','competencia','descricao','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em']
 };
 function isISODate(v){ return /^\d{4}-\d{2}-\d{2}/.test(''+v); }
@@ -1375,7 +1375,8 @@ var COLS = {
   ],
   folha:[
     ['empresa','Empresa','sel'],['competencia','Mês competência','month'],['qtd','Qtd colaboradores','int'],
-    ['liquido','Valor líquido','moeda'],['gratif','Gratificação','moeda'],['total','Valor total','moeda']
+    ['liquido','Valor líquido','moeda'],['gratif','Gratificação','moeda'],['pensao','Pensão Alimentícia','moeda'],['total','Valor total','moeda'],
+    ['editando','Editar','editpencil']
   ],
   custos:[
     ['empresa','Empresa','sel'],['competencia','Mês competência','month'],['descricao','Descrição do documento','text'],['valor','Valor','moeda'],
@@ -1445,6 +1446,17 @@ function viewGeneric(t){
        '<button class="btn ghost sm" onclick="limparFerFiltro()">Limpar</button>'+
        '<button class="btn" onclick="addRow(\'ferias\')">+ Adicionar</button>'+
        '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_ferias\')">↺ Larguras</button></div></div>';
+  } else if(t==='folha'){
+    var femps=['ILED BRASILIA','ILED SÃO PAULO','NEW ILED','RED PRODUCOES','X-LED PRODUCOES','MT PRODUCOES'];
+    var fempOpts='<option value="">Todas as empresas</option>';
+    femps.forEach(function(e){ fempOpts+='<option value="'+esc(e)+'">'+e+'</option>'; });
+    h+='<div class="flex">'+
+       '<select id="folhaEmp" onchange="filterFolha()">'+fempOpts+'</select>'+
+       '<label class="fl">De <input type="month" id="folhaFrom" onchange="filterFolha()"></label>'+
+       '<label class="fl">Até <input type="month" id="folhaTo" onchange="filterFolha()"></label>'+
+       '<button class="btn ghost sm" onclick="limparFolhaFiltro()">Limpar</button>'+
+       '<button class="btn" onclick="addRow(\'folha\')">+ Adicionar</button>'+
+       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_folha\')">↺ Larguras</button></div></div>';
   } else {
     h+='<div class="flex"><input placeholder="🔎 Buscar" oninput="filterTable(this,\''+t+'\')"><button class="btn" onclick="addRow(\''+t+'\')">+ Adicionar</button>'+
        '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_'+t+'\')">↺ Larguras</button></div></div>';
@@ -1591,12 +1603,17 @@ function refreshCell(t,id,key){
 }
 function cellEditor(t,r,c){
   var key=c[0], type=c[2], val=r[key]===null||r[key]===undefined?'':r[key];
-  var locked = ((t==='ferias'||t==='rescisoes'||t==='custos') && isYes(r.bloqueado) && type!=='lock');
+  var locked = ((t==='ferias'||t==='rescisoes'||t==='custos') && isYes(r.bloqueado) && type!=='lock')
+             || (t==='folha' && !isYes(r.editando) && type!=='editpencil');
   var dis = locked?' disabled':'';
   var on='onchange="upd(\''+t+'\',\''+r.id+'\',\''+key+'\',this.value)"';
   if(type==='lock'){
     var yes=isYes(val);
     return '<button class="btn '+(yes?'save saved':'ghost')+' sm" title="'+(yes?'Travado — clique no lápis para editar':'Marcar concluído e travar edição')+'" onclick="toggleLock(\''+t+'\',\''+r.id+'\')">'+(yes?'🔒 Travado':'✏️ Editar')+'</button>';
+  }
+  if(type==='editpencil'){
+    var editing=isYes(val);
+    return '<button class="btn '+(editing?'save saved':'ghost')+' sm" title="'+(editing?'Editando — clique para concluir e travar':'Clique para editar esta linha')+'" onclick="toggleEditFolha(\''+t+'\',\''+r.id+'\')">'+(editing?'✔ Concluir':'✏️ Editar')+'</button>';
   }
   if(type==='sel'){
     var emps=['ILED BRASILIA','ILED SÃO PAULO','NEW ILED','RED PRODUCOES','X-LED PRODUCOES','MT PRODUCOES'];var opts='<option value="">—</option>';var f=false;
@@ -1892,6 +1909,13 @@ function toggleLock(t,id){
   logEdit(t,r,'bloqueado',_old,r.bloqueado);
   saveLocal(); persist(t,r); render();
 }
+function toggleEditFolha(t,id){
+  var r=find(t,id); if(!r)return;
+  var _old=r.editando;
+  r.editando = isYes(r.editando)?'NÃO':'SIM';
+  logEdit(t,r,'editando',_old,r.editando);
+  saveLocal(); persist(t,r); render();
+}
 function filterTable(inp,t){
   var q=inp.value.toLowerCase();
   var tb=document.querySelectorAll('#tbl_'+t+' tbody tr');
@@ -1919,7 +1943,29 @@ function limparFerFiltro(){
   var nmEl=document.getElementById('ferName'); if(nmEl)nmEl.value='';
   filterFerias();
 }
-function addRow(t){ var r={id:uid()}; COLS[t].forEach(function(c){r[c[0]]='';}); if(t==='rescisoes')r.tipo_doc='TRCT'; STORE[t].push(r); persist(t,r); render(); }
+function filterFolha(){
+  var from=(document.getElementById('folhaFrom')||{}).value||'';
+  var to=(document.getElementById('folhaTo')||{}).value||'';
+  var emp=(document.getElementById('folhaEmp')||{}).value||'';
+  var trs=document.querySelectorAll('#tbl_folha tbody tr');
+  for(var i=0;i<trs.length;i++){
+    var id=trs[i].getAttribute('data-id');
+    var r=find('folha',id); if(!r){ continue; }
+    var show=true;
+    var comp=(''+(r.competencia||'')).slice(0,7);
+    if(from && (!comp||comp<from)) show=false;
+    if(to && (!comp||comp>to)) show=false;
+    if(emp && (r.empresa||'')!==emp) show=false;
+    trs[i].style.display = show?'':'none';
+  }
+}
+function limparFolhaFiltro(){
+  var f1=document.getElementById('folhaFrom'); if(f1)f1.value='';
+  var f2=document.getElementById('folhaTo'); if(f2)f2.value='';
+  var fe=document.getElementById('folhaEmp'); if(fe)fe.value='';
+  filterFolha();
+}
+function addRow(t){ var r={id:uid()}; COLS[t].forEach(function(c){r[c[0]]='';}); if(t==='rescisoes')r.tipo_doc='TRCT'; if(t==='folha')r.editando='SIM'; STORE[t].push(r); persist(t,r); render(); }
 
 /* ================= CRUD CORE ================= */
 function find(t,id){ var a=STORE[t]; for(var i=0;i<a.length;i++){ if(a[i].id===id)return a[i]; } return null; }
