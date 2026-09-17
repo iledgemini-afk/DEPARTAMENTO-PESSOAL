@@ -11,7 +11,7 @@
   --bg:#0a0b0f;--bg2:#111319;--panel:#14161d;--panel2:#171922;--panelh:#1b1e28;
   --line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);
   --txt:#eef0f5;--mut:#9aa0af;--mut2:#6b7180;
-  --red:#e10600;--red2:#ff1f44;--grn:#3ddc84;--amber:#ffb020;--blue:#4f8cff;
+  --red:#e10600;--red2:#ff1f44;--grn:#3ddc84;--amber:#ffb020;--blue:#4f8cff;--violet:#a259ff;
   --shadow:0 12px 40px rgba(0,0,0,.5);
   --glass:rgba(24,26,34,.55);--glass-hi:rgba(255,255,255,.06);
   --glass-bd:rgba(255,255,255,.12);
@@ -186,7 +186,9 @@ td input:focus,td select:focus{border-color:var(--red);background:rgba(255,255,2
 .cal-event-paid{background:rgba(61,220,132,.22);color:var(--grn);font-weight:600}
 .cal-event-late{background:rgba(225,6,0,.2);color:var(--red2)}
 .cal-event-warn{background:rgba(255,176,32,.22);color:var(--amber)}
-@media(max-width:760px){ .cal-cell{min-height:70px;font-size:11px} .cal-event{font-size:9.5px} }
+.cal-daytotal{font-size:10px;font-weight:800;color:var(--amber);margin-top:4px;padding-top:4px;border-top:1px dashed var(--line2);white-space:nowrap}
+.cal-event-antecip{border-left:3px solid var(--violet);box-shadow:0 0 0 1px rgba(162,89,255,.35) inset;font-weight:700}
+@media(max-width:760px){ .cal-cell{min-height:70px;font-size:11px} .cal-event{font-size:9.5px} .cal-daytotal{font-size:9px} }
 .subtabs{display:flex;gap:6px;margin:6px 0 16px;flex-wrap:wrap}
 .subtabs button{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:9px;padding:7px 13px;font-weight:600;font-size:12.5px;cursor:pointer;color:var(--mut);font-family:inherit}
 .subtabs button.active{background:rgba(225,6,0,.14);color:var(--txt);border-color:var(--red);box-shadow:var(--glass-sh)}
@@ -649,6 +651,142 @@ function pdfVencidos(){
   setTimeout(function(){ try{ win.focus(); win.print(); }catch(e){} },300);
 }
 
+/* Gera, numa aba nova, um PDF (via impressão do navegador) com todos os vencimentos
+   (férias, rescisões e custos) de um período escolhido pelo usuário, com descrição,
+   valor de cada lançamento e o valor total somado do período. */
+function pdfPeriodo(){
+  var from=dtReadISO('calFrom'), to=dtReadISO('calTo');
+  if(!from||!to){ alert('Preencha as duas datas (De e Até) no formato dia/mês/ano.'); return; }
+  if(from>to){ alert('A data "De" não pode ser depois da data "Até".'); return; }
+  var events=calendarEventsForMonth();
+  var isos=Object.keys(events).filter(function(iso){ return iso>=from && iso<=to; }).sort();
+  var total=0, qtd=0;
+  var linhas=[];
+  isos.forEach(function(iso){
+    events[iso].forEach(function(e){
+      total+=num(e.valor); qtd++;
+      linhas.push({data:iso,empresa:(e.empresa||'').trim(),desc:e.desc,valor:e.valor});
+    });
+  });
+
+  /* ordena pela nomenclatura das empresas (mesma ordem usada no resto do sistema) e, dentro da mesma empresa, por data */
+  var ORDEM_EMP=['ILED BRASILIA','ILED SÃO PAULO','NEW ILED','RED PRODUCOES','X-LED PRODUCOES','MT PRODUCOES'];
+  function empIdx(nome){ var i=ORDEM_EMP.indexOf(nome); return i===-1?999:i; }
+  linhas.sort(function(a,b){
+    var ea=a.empresa||'Sem empresa definida', eb=b.empresa||'Sem empresa definida';
+    var ia=empIdx(ea), ib=empIdx(eb);
+    if(ia!==ib) return ia-ib;
+    if(ia===999 && ea!==eb) return ea.localeCompare(eb);
+    if(a.data!==b.data) return a.data<b.data?-1:1;
+    return 0;
+  });
+
+  var h='<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Resumo financeiro do período - DP ILED</title><style>'+
+    'body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:26px;font-size:12.5px}'+
+    'h1{font-size:18px;margin:0 0 4px}'+
+    '.sub{color:#555;font-size:11.5px;margin-bottom:18px;line-height:1.5}'+
+    '.kpis{display:flex;gap:12px;margin-bottom:20px}'+
+    '.kpi{border:1px solid #ccc;border-radius:8px;padding:8px 16px}'+
+    '.kpi b{display:block;font-size:20px;margin-top:2px}'+
+    'table{border-collapse:collapse;width:auto;max-width:100%;margin-bottom:10px}'+
+    'th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;font-size:11.5px;vertical-align:top}'+
+    'th{background:#f2f2f2}'+
+    'th:nth-child(3),td:nth-child(3){max-width:340px}'+
+    'th:last-child,td.valor{text-align:right;white-space:nowrap;font-weight:700;padding-left:18px}'+
+    'tfoot td{font-weight:800;border-top:2px solid #333}'+
+    '@media print{ body{padding:0} .kpi{break-inside:avoid} tr{break-inside:avoid} }'+
+    '</style></head><body>';
+  h+='<h1>Resumo financeiro — Período selecionado</h1>';
+  h+='<div class="sub">Período: '+fmtD(from)+' a '+fmtD(to)+'. Gerado em '+fmtD(today())+'. Inclui férias, rescisões (com multa, quando houver) e custos adicionais com vencimento dentro do período, ordenados por empresa.</div>';
+  h+='<div class="kpis">'+
+     '<div class="kpi">Lançamentos<b>'+qtd+'</b></div>'+
+     '<div class="kpi">Valor total do período<b>'+money(total)+'</b></div>'+
+     '</div>';
+  if(!linhas.length){
+    h+='<p>Nenhum lançamento encontrado no período selecionado.</p>';
+  } else {
+    h+='<table><thead><tr><th>Data</th><th>Empresa</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>';
+    linhas.forEach(function(l){
+      h+='<tr><td>'+fmtD(l.data)+'</td><td>'+esc(l.empresa||'—')+'</td><td>'+esc(l.desc)+'</td><td class="valor">'+money(l.valor)+'</td></tr>';
+    });
+    h+='</tbody><tfoot><tr><td colspan="3">Total do período</td><td class="valor">'+money(total)+'</td></tr></tfoot></table>';
+  }
+  h+='</body></html>';
+
+  var win=window.open('','_blank');
+  if(!win){ alert('Seu navegador bloqueou a nova aba — permita pop-ups para este site e tente de novo.'); return; }
+  win.document.open(); win.document.write(h); win.document.close();
+  setTimeout(function(){ try{ win.focus(); win.print(); }catch(e){} },300);
+}
+
+/* Gera, numa aba nova, um PDF (via impressão do navegador) com todos os registros
+   atualmente exibidos numa tabela (rescisões, férias, folha ou custos), respeitando
+   o filtro/busca aplicado na tela, junto com o valor total somado. */
+var PDF_SKIP_TYPES={check:1,pastaCheck:1,checkVencido:1,lock:1,editpencil:1,recDetail:1};
+function pdfCellTxt(t,r,col){
+  var key=col[0], type=col[2], val=r[key];
+  if(type==='moeda') return money(val);
+  if(type==='calcTotal') return money(rescTotal(r));
+  if(type==='date'||type==='calcDate') return val?fmtD(val):'';
+  if(type==='month'){ var mv=(''+(val||'')).slice(0,7); if(!mv) return ''; var pp=mv.split('-'); return pp.length===2?(pp[1]+'/'+pp[0]):mv; }
+  if(type==='int'||type==='num'||type==='autodays') return (val===null||val===undefined||val==='')?'':(''+val);
+  return esc(val===null||val===undefined?'':val);
+}
+function pdfRowValor(t,r){
+  if(t==='rescisoes') return rescTotal(r);
+  if(t==='folha') return num(r.total);
+  return num(r.valor);
+}
+function pdfTabela(t){
+  var cols=(COLS[t]||[]).filter(function(c){ return !PDF_SKIP_TYPES[c[2]]; });
+  var trs=document.querySelectorAll('#tbl_'+t+' tbody tr[data-id]');
+  var rows=[];
+  for(var i=0;i<trs.length;i++){
+    if(trs[i].style.display==='none') continue;
+    var id=trs[i].getAttribute('data-id');
+    var r=find(t,id); if(r) rows.push(r);
+  }
+  var total=0; rows.forEach(function(r){ total+=pdfRowValor(t,r); });
+
+  var h='<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>'+esc(TITLES[t][0])+' - DP ILED</title><style>'+
+    'body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:26px;font-size:11.5px}'+
+    'h1{font-size:18px;margin:0 0 4px}'+
+    '.sub{color:#555;font-size:11.5px;margin-bottom:18px;line-height:1.5}'+
+    '.kpis{display:flex;gap:12px;margin-bottom:20px}'+
+    '.kpi{border:1px solid #ccc;border-radius:8px;padding:8px 16px}'+
+    '.kpi b{display:block;font-size:20px;margin-top:2px}'+
+    'table{border-collapse:collapse;width:100%;margin-bottom:10px}'+
+    'th,td{border:1px solid #ddd;padding:5px 7px;text-align:left;font-size:10.5px;vertical-align:top}'+
+    'th{background:#f2f2f2}'+
+    '@media print{ body{padding:0} .kpi{break-inside:avoid} tr{break-inside:avoid} }'+
+    '</style></head><body>';
+  h+='<h1>'+esc(TITLES[t][0])+'</h1>';
+  h+='<div class="sub">'+esc(TITLES[t][1])+'. Gerado em '+fmtD(today())+'. A lista respeita o filtro/busca aplicado na tela no momento da geração.</div>';
+  h+='<div class="kpis">'+
+     '<div class="kpi">Lançamentos<b>'+rows.length+'</b></div>'+
+     '<div class="kpi">Valor total<b>'+money(total)+'</b></div>'+
+     '</div>';
+  if(!rows.length){
+    h+='<p>Nenhum lançamento encontrado com o filtro atual.</p>';
+  } else {
+    h+='<table><thead><tr>';
+    cols.forEach(function(c){ h+='<th>'+esc(c[1])+'</th>'; });
+    h+='</tr></thead><tbody>';
+    rows.forEach(function(r){
+      h+='<tr>';
+      cols.forEach(function(c){ h+='<td>'+pdfCellTxt(t,r,c)+'</td>'; });
+      h+='</tr>';
+    });
+    h+='</tbody></table>';
+  }
+  h+='</body></html>';
+
+  var win=window.open('','_blank');
+  if(!win){ alert('Seu navegador bloqueou a nova aba — permita pop-ups para este site e tente de novo.'); return; }
+  win.document.open(); win.document.write(h); win.document.close();
+  setTimeout(function(){ try{ win.focus(); win.print(); }catch(e){} },300);
+}
+
 /* vencimento status: retorna {cls,label,dias} baseado numa data alvo */
 function anoValido(iso){ var y=parseInt((''+iso).slice(0,4),10); return !isNaN(y)&&y>=1900&&y<=2100; }
 function vencStatus(dateIso){
@@ -671,6 +809,8 @@ var COLAB_SUB = 'pessoais';
 var COLAB_STATUS = 'ativos';
 var COLAB_SHOW_TOTAIS = false;
 var COLAB_ALERT_FILTER = false;
+var CUSTOS_SEL = {};
+var CUSTOS_ONLY_SEL = false;
 var CAL_TODAY = new Date();
 var CAL_YEAR = CAL_TODAY.getFullYear();
 var CAL_MONTH = CAL_TODAY.getMonth(); // 0-indexado
@@ -723,6 +863,16 @@ function quintoDiaUtil(y,m){
   }
   return d.toISOString().slice(0,10);
 }
+/* Sábado ou domingo: pagamento precisa ser adiantado para a sexta-feira anterior */
+function weekendAdjustIso(iso){
+  if(!iso) return {iso:iso,moved:false};
+  var d=new Date((''+iso).slice(0,10)+'T00:00:00');
+  if(isNaN(d.getTime())) return {iso:iso,moved:false};
+  var wd=d.getDay();
+  if(wd===6){ d.setDate(d.getDate()-1); return {iso:d.toISOString().slice(0,10),moved:true}; } // sábado -> sexta
+  if(wd===0){ d.setDate(d.getDate()-2); return {iso:d.toISOString().slice(0,10),moved:true}; } // domingo -> sexta
+  return {iso:iso,moved:false};
+}
 function calendarEventsForMonth(){
   var map={}, tdy=today();
   function statusCls(vencIso,paid){
@@ -733,28 +883,38 @@ function calendarEventsForMonth(){
     if(dd===0) return 'cal-event-warn';
     return '';
   }
-  function add(iso,label,cls){
+  function add(iso,desc,cls,valor,empresa){
     if(!iso) return; iso=(''+iso).slice(0,10); if(!isISODate(iso)) return;
-    if(!map[iso]) map[iso]=[]; map[iso].push({label:label,cls:cls||''});
+    var adj=weekendAdjustIso(iso);
+    var finalCls=cls||'';
+    var calLabel=desc+' - '+(money(valor)||'—');
+    var descOnly=desc;
+    if(adj.moved){
+      finalCls=(finalCls?finalCls+' ':'')+'cal-event-antecip';
+      var nota=' (adiantado — vencia em '+fmtD(iso)+', fim de semana)';
+      calLabel='⏩ '+calLabel+nota;
+      descOnly='⏩ '+desc+nota;
+    }
+    if(!map[adj.iso]) map[adj.iso]=[]; map[adj.iso].push({label:calLabel,desc:descOnly,cls:finalCls,valor:num(valor),empresa:empresa||'',antecip:adj.moved,origIso:iso});
   }
-  (STORE.ferias||[]).forEach(function(r){ if(!r.colaborador&&!r.vencimento) return; var paid=isYes(r.pasta); add(r.vencimento,'FÉRIAS - '+(r.colaborador||'—')+' - '+(money(r.valor)||'—'),statusCls(r.vencimento,paid)); });
+  (STORE.ferias||[]).forEach(function(r){ if(!r.colaborador&&!r.vencimento) return; var paid=isYes(r.pasta); add(r.vencimento,'FÉRIAS - '+(r.colaborador||'—'),statusCls(r.vencimento,paid),r.valor,r.empresa); });
   (STORE.rescisoes||[]).forEach(function(r){
     if(!r.colaborador&&!r.vencimento) return;
     var pinfo=parcelasInfo(r);
     if(pinfo){
       /* parcelado (Acordo PJ): uma entrada por parcela, cada uma com seu valor e vencimento */
       parseParcelas(r.parcelas_pj).forEach(function(p,i){
-        add(p.vencimento,'TRCT (parcela '+(i+1)+'/'+pinfo.total+') - '+(r.colaborador||'—')+' - '+(money(p.valor)||'—'),statusCls(p.vencimento,isYes(p.pago)));
+        add(p.vencimento,'TRCT (parcela '+(i+1)+'/'+pinfo.total+') - '+(r.colaborador||'—'),statusCls(p.vencimento,isYes(p.pago)),p.valor,r.empresa);
       });
       /* a multa não parcela — vence sempre 10 dias após o desligamento (mesma data de r.vencimento) */
       if(isYes(r.multa_rescisoria) && num(r.valor_multa_rescisoria)>0){
-        add(r.vencimento,'MULTA RESCISÓRIA - '+(r.colaborador||'—')+' - '+(money(r.valor_multa_rescisoria)||'—'),statusCls(r.vencimento,isYes(r.multa_paga)));
+        add(r.vencimento,'MULTA RESCISÓRIA - '+(r.colaborador||'—'),statusCls(r.vencimento,isYes(r.multa_paga)),r.valor_multa_rescisoria,r.empresa);
       }
     } else {
-      add(r.vencimento,(r.tipo_doc||'TRCT')+' - '+(r.colaborador||'—')+' - '+(money(rescTotal(r))||'—'),statusCls(r.vencimento,isYes(r.pasta)));
+      add(r.vencimento,(r.tipo_doc||'TRCT')+' - '+(r.colaborador||'—'),statusCls(r.vencimento,isYes(r.pasta)),rescTotal(r),r.empresa);
     }
   });
-  (STORE.custos||[]).forEach(function(r){ if(!r.vencimento) return; var paid=isYes(r.pasta); add(r.vencimento,'CUSTO'+(r.descricao?(' - '+r.descricao):'')+' - '+(money(r.valor)||'—'),statusCls(r.vencimento,paid)); });
+  (STORE.custos||[]).forEach(function(r){ if(!r.vencimento) return; var paid=isYes(r.pasta); add(r.vencimento,'CUSTO'+(r.descricao?(' - '+r.descricao):''),statusCls(r.vencimento,paid),r.valor,r.empresa); });
   return map;
 }
 function calNav(delta){
@@ -776,13 +936,14 @@ function viewCalendario(){
   h+='</div>';
   h+='<button class="btn ghost sm" onclick="calToday()">Hoje</button>';
   h+='</div>';
-  h+='<div class="muted" style="font-size:12px;margin-bottom:12px">🟨 Dia grifado = 5º dia útil do mês (contando sábado como dia útil, só domingo não conta). <span style="color:var(--grn)">🟩 Verde</span> = pagamento OK · <span style="color:var(--amber)">🟧 Âmbar</span> = vence hoje · <span style="color:var(--red2)">🟥 Vermelho</span> = vencido sem pagar. Rescisão parcelada (Acordo PJ) aparece com uma entrada por parcela + a multa separada (ela não parcela — vence sempre 10 dias após o desligamento).</div>';
+  h+='<div class="muted" style="font-size:12px;margin-bottom:12px">🟨 Dia grifado = 5º dia útil do mês (contando sábado como dia útil, só domingo não conta). <span style="color:var(--grn)">🟩 Verde</span> = pagamento OK · <span style="color:var(--amber)">🟧 Âmbar</span> = vence hoje · <span style="color:var(--red2)">🟥 Vermelho</span> = vencido sem pagar · <span style="color:var(--violet)">🟪 Roxo (borda) ⏩</span> = vencimento caía em sábado/domingo e foi adiantado automaticamente para a sexta-feira anterior. Rescisão parcelada (Acordo PJ) aparece com uma entrada por parcela + a multa separada (ela não parcela — vence sempre 10 dias após o desligamento). O total de cada dia aparece no rodapé da célula e também ao passar o mouse sobre o dia.</div>';
 
   var q5=quintoDiaUtil(y,m);
   var events=calendarEventsForMonth();
   var firstDow=new Date(Date.UTC(y,m,1)).getUTCDay();
   var daysInMonth=new Date(Date.UTC(y,m+1,0)).getUTCDate();
   var tdy=today();
+  var monthTotal=0;
 
   h+='<div class="cal-grid">';
   ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].forEach(function(d){ h+='<div class="cal-dow">'+d+'</div>'; });
@@ -790,14 +951,34 @@ function viewCalendario(){
   for(var day=1;day<=daysInMonth;day++){
     var iso=y+'-'+pad2(m+1)+'-'+pad2(day);
     var isQ5=(iso===q5), isToday=(iso===tdy);
-    h+='<div class="cal-cell'+(isQ5?' cal-q5':'')+(isToday?' cal-today':'')+'">';
-    h+='<div class="cal-daynum">'+day+(isQ5?' <span class="chip c-warn" style="padding:1px 5px;font-size:9px;margin-left:3px">5º dia útil</span>':'')+'</div>';
     var evs=events[iso];
+    var dayTotal=0;
+    if(evs) evs.forEach(function(e){ dayTotal+=num(e.valor); });
+    monthTotal+=dayTotal;
+    var titleAttr=dayTotal?(' title="Total do dia '+pad2(day)+'/'+pad2(m+1)+': '+money(dayTotal)+'"'):'';
+    h+='<div class="cal-cell'+(isQ5?' cal-q5':'')+(isToday?' cal-today':'')+'"'+titleAttr+'>';
+    h+='<div class="cal-daynum">'+day+(isQ5?' <span class="chip c-warn" style="padding:1px 5px;font-size:9px;margin-left:3px">5º dia útil</span>':'')+'</div>';
     if(evs) evs.forEach(function(e){ h+='<div class="cal-event'+(e.cls?(' '+e.cls):'')+'">'+esc(e.label)+'</div>'; });
+    if(dayTotal) h+='<div class="cal-daytotal">Total: '+money(dayTotal)+'</div>';
     h+='</div>';
   }
   var rem=(7-((firstDow+daysInMonth)%7))%7;
   for(var j=0;j<rem;j++) h+='<div class="cal-cell cal-empty"></div>';
+  h+='</div>';
+
+  h+='<div class="card" style="margin-top:16px">';
+  h+='<div class="xrow"><div><div class="section-title">💰 Total do mês exibido</div><div class="muted" style="font-size:12px">Somatório de todos os vencimentos (férias, rescisões e custos) de '+monthNames[m]+' de '+y+'</div></div>'+
+     '<div style="font-size:22px;font-weight:800">'+money(monthTotal)+'</div></div>';
+  h+='</div>';
+
+  h+='<div class="card" style="margin-top:16px">';
+  h+='<div class="section-title">📄 PDF por período</div>';
+  h+='<div class="muted" style="font-size:12px;margin-bottom:10px">Escolha um período (dia, mês e ano de início e fim) e gere um PDF com a descrição e o valor de cada vencimento no intervalo, além do valor total somado.</div>';
+  h+='<div class="flex" style="align-items:flex-end;gap:12px">'+
+     '<label class="fl">De'+dateTrio('calFrom','',"")+'</label>'+
+     '<label class="fl">Até'+dateTrio('calTo','',"")+'</label>'+
+     '<button class="btn" onclick="pdfPeriodo()">⬇ Gerar PDF do período</button>'+
+     '</div>';
   h+='</div>';
   return h;
 }
@@ -1445,7 +1626,8 @@ function viewGeneric(t){
        '<input id="ferName" placeholder="🔎 Colaborador" oninput="filterFerias()">'+
        '<button class="btn ghost sm" onclick="limparFerFiltro()">Limpar</button>'+
        '<button class="btn" onclick="addRow(\'ferias\')">+ Adicionar</button>'+
-       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_ferias\')">↺ Larguras</button></div></div>';
+       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_ferias\')">↺ Larguras</button>'+
+       '<button class="btn ghost sm" title="Baixa um PDF com os lançamentos exibidos (respeitando o filtro atual) e o valor total" onclick="pdfTabela(\'ferias\')">⬇ Baixar PDF</button></div></div>';
   } else if(t==='folha'){
     var femps=['ILED BRASILIA','ILED SÃO PAULO','NEW ILED','RED PRODUCOES','X-LED PRODUCOES','MT PRODUCOES'];
     var fempOpts='<option value="">Todas as empresas</option>';
@@ -1456,10 +1638,23 @@ function viewGeneric(t){
        '<label class="fl">Até <input type="month" id="folhaTo" onchange="filterFolha()"></label>'+
        '<button class="btn ghost sm" onclick="limparFolhaFiltro()">Limpar</button>'+
        '<button class="btn" onclick="addRow(\'folha\')">+ Adicionar</button>'+
-       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_folha\')">↺ Larguras</button></div></div>';
+       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_folha\')">↺ Larguras</button>'+
+       '<button class="btn ghost sm" title="Baixa um PDF com os lançamentos exibidos (respeitando o filtro atual) e o valor total" onclick="pdfTabela(\'folha\')">⬇ Baixar PDF</button></div></div>';
+  } else if(t==='custos'){
+    h+='<div class="flex" style="align-items:center">'+
+       '<input placeholder="🔎 Buscar" oninput="filterCustos()" id="custosBusca">'+
+       '<label class="fl">De <input type="month" id="custosFrom" onchange="filterCustos()"></label>'+
+       '<label class="fl">Até <input type="month" id="custosTo" onchange="filterCustos()"></label>'+
+       '<button class="btn ghost sm" id="custosFiltrarBtn" onclick="toggleCustosOnlySel()">'+(CUSTOS_ONLY_SEL?'✖ Mostrar todos':'☑ Filtrar marcados')+'</button>'+
+       '<button class="btn ghost sm" onclick="limparCustosFiltro()">Limpar</button>'+
+       '<span class="chip c-info" style="margin-left:4px" id="custosMarkedTotal">Marcados: '+Object.keys(CUSTOS_SEL).filter(function(k){return CUSTOS_SEL[k];}).length+' · '+money(sumCustosMarked())+'</span>'+
+       '<button class="btn" onclick="addRow(\'custos\')">+ Adicionar</button>'+
+       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_custos\')">↺ Larguras</button>'+
+       '<button class="btn ghost sm" title="Baixa um PDF com os lançamentos exibidos (respeitando o filtro atual) e o valor total" onclick="pdfTabela(\'custos\')">⬇ Baixar PDF</button></div></div>';
   } else {
     h+='<div class="flex"><input placeholder="🔎 Buscar" oninput="filterTable(this,\''+t+'\')"><button class="btn" onclick="addRow(\''+t+'\')">+ Adicionar</button>'+
-       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_'+t+'\')">↺ Larguras</button></div></div>';
+       '<button class="btn ghost sm" title="Volta todas as colunas desta tabela ao tamanho padrão" onclick="resetColW(\'tbl_'+t+'\')">↺ Larguras</button>'+
+       '<button class="btn ghost sm" title="Baixa um PDF com os lançamentos exibidos (respeitando o filtro atual) e o valor total" onclick="pdfTabela(\''+t+'\')">⬇ Baixar PDF</button></div></div>';
   }
   h+='<div class="tablewrap"><table id="tbl_'+t+'">';
   if(t==='rescisoes'){
@@ -1468,6 +1663,7 @@ function viewGeneric(t){
        '<col class="c-fin"><col class="c-pasta"><col class="c-concl"><col class="c-del"></colgroup>';
   }
   h+='<thead><tr>';
+  if(t==='custos') h+='<th style="width:34px" title="Selecionar todos visíveis"><input type="checkbox" id="custosSelAll" onchange="toggleCustosSelAll(this.checked)"></th>';
   cols.forEach(function(c){ h+='<th style="cursor:pointer;user-select:none" title="Clique para ordenar" onclick="toggleSort(\''+t+'\',\''+c[0]+'\')">'+c[1]+sortArrow(t,c[0])+'</th>'; });
   h+='<th></th></tr></thead><tbody>';
   h+=tableRows(t);
@@ -1484,8 +1680,8 @@ function makeResizable(table){
   var ths=table.querySelectorAll('thead th');
   var cols=table.querySelectorAll('colgroup col');
   ths.forEach(function(th,i){
-    /* última coluna costuma ser a de ação (excluir), sem cabeçalho — não precisa de puxador */
-    if(i===ths.length-1 && !th.textContent.trim()) return;
+    /* colunas sem texto no cabeçalho (ação de excluir, checkbox de seleção) não precisam de puxador */
+    if(!th.textContent.trim()) return;
     var key=tid+'_c'+i;
     var savedW=COLW[key];
     if(savedW){
@@ -1568,6 +1764,7 @@ function tableRows(t){
       if(pinfoRow) rowStyle = pinfoRow.quitado ? ' style="background:rgba(61,220,132,.07)"' : ' style="background:rgba(255,176,32,.08)"';
     }
     h+='<tr data-id="'+r.id+'"'+rowStyle+'>';
+    if(t==='custos') h+='<td><input type="checkbox"'+(CUSTOS_SEL[r.id]?' checked':'')+' onchange="toggleCustosSel(\''+r.id+'\',this.checked)"></td>';
     cols.forEach(function(c){ h+='<td data-col="'+c[0]+'">'+cellEditor(t,r,c)+'</td>'; });
     var pinfoBtn = t==='rescisoes' ? parcelasInfo(r) : null;
     var showWpp = (t==='ferias'&&!isYes(r.pasta)) || (t==='rescisoes'&&(pinfoBtn?!pinfoBtn.quitado:!isYes(r.pasta)));
@@ -1964,6 +2161,59 @@ function limparFolhaFiltro(){
   var f2=document.getElementById('folhaTo'); if(f2)f2.value='';
   var fe=document.getElementById('folhaEmp'); if(fe)fe.value='';
   filterFolha();
+}
+/* ================= CUSTOS ADICIONAIS: filtro por competência + seleção marcada ================= */
+function sumCustosMarked(){
+  var s=0;
+  (STORE.custos||[]).forEach(function(r){ if(CUSTOS_SEL[r.id]) s+=num(r.valor); });
+  return s;
+}
+function updateCustosMarkedTotal(){
+  var el=document.getElementById('custosMarkedTotal'); if(!el) return;
+  var qtd=Object.keys(CUSTOS_SEL).filter(function(k){return CUSTOS_SEL[k];}).length;
+  el.textContent='Marcados: '+qtd+' · '+money(sumCustosMarked());
+}
+function toggleCustosSel(id,checked){
+  if(checked) CUSTOS_SEL[id]=true; else delete CUSTOS_SEL[id];
+  updateCustosMarkedTotal();
+  if(CUSTOS_ONLY_SEL) filterCustos();
+}
+function toggleCustosSelAll(checked){
+  var trs=document.querySelectorAll('#tbl_custos tbody tr');
+  for(var i=0;i<trs.length;i++){
+    if(trs[i].style.display==='none') continue; // só afeta as linhas visíveis no filtro atual
+    var id=trs[i].getAttribute('data-id');
+    if(checked) CUSTOS_SEL[id]=true; else delete CUSTOS_SEL[id];
+  }
+  render(); filterCustos();
+}
+function toggleCustosOnlySel(){
+  CUSTOS_ONLY_SEL=!CUSTOS_ONLY_SEL;
+  render(); filterCustos();
+}
+function filterCustos(){
+  var from=(document.getElementById('custosFrom')||{}).value||'';
+  var to=(document.getElementById('custosTo')||{}).value||'';
+  var q=((document.getElementById('custosBusca')||{}).value||'').toLowerCase();
+  var trs=document.querySelectorAll('#tbl_custos tbody tr');
+  for(var i=0;i<trs.length;i++){
+    var id=trs[i].getAttribute('data-id');
+    var r=find('custos',id); if(!r){ continue; }
+    var show=true;
+    var comp=(''+(r.competencia||'')).slice(0,7);
+    if(from && (!comp||comp<from)) show=false;
+    if(to && (!comp||comp>to)) show=false;
+    if(q && trs[i].textContent.toLowerCase().indexOf(q)<0) show=false;
+    if(CUSTOS_ONLY_SEL && !CUSTOS_SEL[id]) show=false;
+    trs[i].style.display = show?'':'none';
+  }
+}
+function limparCustosFiltro(){
+  var f1=document.getElementById('custosFrom'); if(f1)f1.value='';
+  var f2=document.getElementById('custosTo'); if(f2)f2.value='';
+  var fb=document.getElementById('custosBusca'); if(fb)fb.value='';
+  CUSTOS_ONLY_SEL=false;
+  render();
 }
 function addRow(t){ var r={id:uid()}; COLS[t].forEach(function(c){r[c[0]]='';}); if(t==='rescisoes')r.tipo_doc='TRCT'; if(t==='folha')r.editando='SIM'; STORE[t].push(r); persist(t,r); render(); }
 
