@@ -1552,7 +1552,7 @@ var COLS = {
     ['empresa','Empresa','sel'],['colaborador','Colaborador','text'],['inicio','Início gozo','date'],
     ['dias','Qtd dias','int'],['fim','Último dia','calcDate'],['valor','Valor','moeda'],
     ['vencimento','Vencimento (2 dias úteis antes)','date'],
-    ['financeiro','Entregue financeiro','pastaCheck'],['pasta','Comprovante na pasta','checkVencido'],['bloqueado','Concluído','lock']
+    ['financeiro','Entregue financeiro','pastaCheck'],['pasta','Comprovante na pasta','pastaCheck'],['bloqueado','Concluído','lock']
   ],
   folha:[
     ['empresa','Empresa','sel'],['competencia','Mês competência','month'],['qtd','Qtd colaboradores','int'],
@@ -1561,7 +1561,7 @@ var COLS = {
   ],
   custos:[
     ['empresa','Empresa','sel'],['competencia','Mês competência','month'],['descricao','Descrição do documento','text'],['valor','Valor','moeda'],
-    ['vencimento','Vencimento','date'],['financeiro','Entregue financeiro em','text'],['pasta','Comprovante salvo na pasta (pago)','checkVencido'],['bloqueado','Concluído','lock']
+    ['vencimento','Vencimento','date'],['financeiro','Entregue financeiro em','text'],['pasta','Comprovante salvo na pasta (pago)','pastaCheck'],['bloqueado','Concluído','lock']
   ]
 };
 var TITLES={rescisoes:['Controle de Rescisões','TRCT, FGTS mensal e FGTS rescisório'],
@@ -1578,6 +1578,16 @@ function feriasStatus(){
   regs.forEach(function(r){ var i=(''+(r.inicio||'')).slice(0,10), f=(''+(r.fim||'')).slice(0,10); if(i&&f&&i<=tdy&&tdy<=f&&isYes(r.pasta)) ativas.push(r); });
   // agendadas: ainda não pagas (comprovante não salvo na pasta)
   regs.forEach(function(r){ if(!isYes(r.pasta)) agendadas.push(r); });
+  // ordena agendadas por vencimento (mais próximo primeiro); em empate, por nome do colaborador
+  agendadas.sort(function(a,b){
+    var d=(''+(a.vencimento||'')).localeCompare(''+(b.vencimento||''));
+    return d!==0 ? d : (''+(a.colaborador||'')).localeCompare(''+(b.colaborador||''));
+  });
+  // ordena ativas por data de retorno (fim, mais próximo primeiro); em empate, por nome
+  ativas.sort(function(a,b){
+    var d=(''+(a.fim||'')).localeCompare(''+(b.fim||''));
+    return d!==0 ? d : (''+(a.colaborador||'')).localeCompare(''+(b.colaborador||''));
+  });
   return {ativas:ativas,agendadas:agendadas,reg:regs.length};
 }
 function feriasPanel(){
@@ -1597,7 +1607,11 @@ function feriasPanel(){
       '<span class="chip c-info" style="align-self:flex-start;margin-top:2px">↩ Retorno: '+fmtD(volta)+'</span>'+
       '</div>';
   });
-  h+=block('🟡 Agendadas (aguardando financeiro)','c-warn',fs.agendadas,function(r){ return '<span>'+esc(r.colaborador||'—')+'</span><span class="muted" style="font-size:11px">vence '+fmtD(r.vencimento)+'</span>'; });
+  h+=block('🟡 Agendadas (aguardando financeiro)','c-warn',fs.agendadas,function(r){
+    var st=r.vencimento?vencStatus(r.vencimento):{cls:'c-mut',label:'sem data'};
+    return '<span>'+esc(r.colaborador||'—')+'</span>'+
+      '<span class="chip '+st.cls+'" style="font-size:10.5px">'+(r.vencimento?fmtD(r.vencimento)+' · '+st.label:st.label)+'</span>';
+  });
   h+='</div>';
   return h;
 }
