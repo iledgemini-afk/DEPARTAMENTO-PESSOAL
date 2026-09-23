@@ -270,6 +270,8 @@ label.tgl input{width:18px;height:18px;margin-top:2px;accent-color:var(--grn)}
 .freel-card .ev-line:last-child{border-bottom:0}
 .freel-card .ev-val{color:var(--grn);font-weight:800}
 .ev-card{border-left:3px solid var(--violet)}
+
+.qtd-chip{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:6px;background:rgba(61,220,132,.15);color:var(--grn);border:1px solid rgba(61,220,132,.35)}
 </style>
 </head>
 <body>
@@ -1754,6 +1756,7 @@ function normFreel(f){
   return f;
 }
 function normFreelAll(){ (STORE.freelancers||[]).forEach(normFreel); }
+function evTotal(ev){ return evNum(ev&&ev.valor)*evQtd(ev); }
 function evNum(v){ var n=parseFloat(v); return isNaN(n)?0:n; }
 function evDias(ev){
   if(!ev.periodo_inicio||!ev.periodo_fim) return '';
@@ -1766,6 +1769,7 @@ function evPeriodo(ev){
   if(i&&e){ var d=evDias(ev); return fmtD(i)+' → '+fmtD(e)+(d?' ('+d+' dia'+(d>1?'s':'')+')':''); }
   return fmtD(i||e);
 }
+function evQtd(ev){ var n=parseInt(ev&&ev.qtd_pessoas,10); return (isNaN(n)||n<1)?1:n; }
 function evNome(ev){ return (''+(ev.evento||'')).trim(); }
 function evKey(ev){ return evNome(ev).toUpperCase(); }
 /* lista de eventos já usados (para o filtro e o autocompletar) */
@@ -1796,7 +1800,7 @@ function evPassa(ev){
 function freelBusca(f,q){
   if(!q) return true;
   var txt=[f.nome,canSens()?f.cpf:'',f.mei,f.endereco,f.telefone];
-  (f.eventos||[]).forEach(function(ev){ txt.push(ev.evento,ev.local,ev.funcao,ev.estado,ufNome(ev.estado)); });
+  (f.eventos||[]).forEach(function(ev){ txt.push(ev.evento,ev.local,ev.funcao,ev.estado,ufNome(ev.estado),ev.equipe_obs); });
   return txt.join(' ').toLowerCase().indexOf(q)>=0;
 }
 /* linhas do relatório: uma por participação (freelancer × evento) já filtradas */
@@ -1829,7 +1833,7 @@ function freelFiltroDesc(){
 function viewFreel(){
   normFreelAll();
   var rows=STORE.freelancers, totEv=0, totVal=0;
-  rows.forEach(function(f){ (f.eventos||[]).forEach(function(ev){ totEv++; totVal+=evNum(ev.valor); }); });
+  rows.forEach(function(f){ (f.eventos||[]).forEach(function(ev){ totEv++; totVal+=evTotal(ev); }); });
   var ufs=ufsUsados(), evs=eventosUsados();
   if(FREEL_FILTRO.valor){
     var lista=FREEL_FILTRO.modo==='uf'?ufs:evs.map(function(e){return e.toUpperCase();});
@@ -1874,10 +1878,10 @@ function setFreelModo(m){ FREEL_FILTRO.modo=m; FREEL_FILTRO.valor=''; render(); 
 function limparFreelFiltro(){ FREEL_FILTRO.valor=''; FREEL_FILTRO.de=''; FREEL_FILTRO.ate=''; FREEL_Q=''; render(); }
 function renderFreelList(){
   var el=document.getElementById('freelList'); if(!el) return;
-  if(FREEL_VIEW==='relatorio'){ el.innerHTML=freelRelatorioHTML(); return; }
+  if(FREEL_VIEW==='relatorio'){ el.innerHTML=freelRelatorioHTML(); el.querySelectorAll('table.freel-rel').forEach(makeResizable); return; }
   var q=(FREEL_Q||'').toLowerCase(), F=FREEL_FILTRO, filtrando=!!(F.valor||F.de||F.ate);
   var grupos={}, ordem=[];
-  function add(k,f,ev){ if(!grupos[k]){ grupos[k]={itens:{},n:0,tot:0}; ordem.push(k); } var g=grupos[k]; if(!g.itens[f.id]) g.itens[f.id]={f:f,evs:[]}; if(ev){ g.itens[f.id].evs.push(ev); g.n++; g.tot+=evNum(ev.valor); } }
+  function add(k,f,ev){ if(!grupos[k]){ grupos[k]={itens:{},n:0,tot:0,qtd:0}; ordem.push(k); } var g=grupos[k]; if(!g.itens[f.id]) g.itens[f.id]={f:f,evs:[]}; if(ev){ g.itens[f.id].evs.push(ev); g.n++; g.tot+=evTotal(ev); g.qtd+=evQtd(ev); } }
   STORE.freelancers.forEach(function(f){
     if(!freelBusca(f,q)) return;
     var evs=(f.eventos||[]).filter(evPassa);
@@ -1893,11 +1897,11 @@ function renderFreelList(){
     else if(F.modo==='uf'){ var uf=k==='~semuf'?'':k; titulo=uf?esc(ufNome(uf)):'Sem estado definido'; chip=ufChip(uf); }
     else { var nomeEv=k==='~semev'?'':evNome(itens[0].evs[0]); titulo=nomeEv?esc(nomeEv):'Evento sem nome'; chip='<span class="uf-badge">🎤</span>'; }
     h+='<div class="uf-group">'+chip+'<span class="uf-big">'+titulo+'</span>'+
-       '<span class="muted" style="font-size:12px">'+itens.length+' freelancer'+(itens.length>1?'s':'')+(g.n?' · '+g.n+' participaç'+(g.n>1?'ões':'ão'):'')+(g.tot&&canSens()?' · '+money(g.tot):'')+'</span><span class="uf-line"></span></div>';
+       '<span class="muted" style="font-size:12px">'+itens.length+' freelancer'+(itens.length>1?'s':'')+(g.qtd?' · <b style="color:var(--txt)">👥 '+g.qtd+' pessoa'+(g.qtd>1?'s':'')+' no total</b>':'')+(g.tot&&canSens()?' · '+money(g.tot):'')+'</span><span class="uf-line"></span></div>';
     h+='<div class="empgrid">';
     itens.forEach(function(it){
       var f=it.f, alert=freelTemAlerta(f), tot=0;
-      it.evs.forEach(function(ev){ tot+=evNum(ev.valor); });
+      it.evs.forEach(function(ev){ tot+=evTotal(ev); });
       var totalEvs=(f.eventos||[]).length;
       h+='<div class="card searchcard freel-card" onclick="openFreel(\''+f.id+'\')">';
       h+='<div class="flex" style="justify-content:space-between;align-items:center;gap:8px">'+
@@ -1907,9 +1911,9 @@ function renderFreelList(){
       if(it.evs.length){
         h+='<div class="ev">';
         it.evs.slice(0,3).forEach(function(ev){
-          h+='<div class="ev-line">'+(ev.estado?ufChip(ev.estado)+' ':'')+'🎤 <b>'+esc(evNome(ev)||'(sem nome)')+'</b>'+(ev.funcao?' · '+esc(ev.funcao):'')+
+          h+='<div class="ev-line">'+(ev.estado?ufChip(ev.estado)+' ':'')+'🎤 <b>'+esc(evNome(ev)||'(sem nome)')+'</b>'+(ev.funcao?' · '+esc(ev.funcao):'')+(evQtd(ev)>1?' <span class="qtd-chip">👥 '+evQtd(ev)+' (ele + '+(evQtd(ev)-1)+')</span>':'')+
              '<br><span class="muted">'+esc(evPeriodo(ev)||'sem período')+(ev.local?' · 📍 '+esc(ev.local):'')+'</span>'+
-             (ev.valor?(canSens()?' <span class="ev-val">'+money(ev.valor)+'</span>':' <span class="sens-inline">🔒</span>'):'')+'</div>';
+             (ev.valor?(canSens()?' <span class="ev-val">'+(evQtd(ev)>1?evQtd(ev)+' × '+money(ev.valor)+' = '+money(evTotal(ev)):money(ev.valor))+'</span>':' <span class="sens-inline">🔒</span>'):'')+'</div>';
         });
         if(it.evs.length>3) h+='<div class="muted" style="font-size:11px">+ '+(it.evs.length-3)+' outro(s)…</div>';
         h+='</div>';
@@ -1931,8 +1935,8 @@ function freelGrupos(linhas){
   linhas.forEach(function(l){
     var k=FREEL_FILTRO.modo==='uf'?(l.ev.estado||''):(evNome(l.ev)||'');
     var kk=k.toUpperCase();
-    if(!g[kk]){ g[kk]={nome:k,linhas:[],tot:0,pessoas:{}}; ordem.push(kk); }
-    g[kk].linhas.push(l); g[kk].tot+=evNum(l.ev.valor); g[kk].pessoas[l.f.id]=1;
+    if(!g[kk]){ g[kk]={nome:k,linhas:[],tot:0,pessoas:{},qtd:0}; ordem.push(kk); }
+    g[kk].linhas.push(l); g[kk].tot+=evTotal(l.ev); g[kk].pessoas[l.f.id]=1; g[kk].qtd+=evQtd(l.ev);
   });
   return ordem.map(function(k){ return g[k]; });
 }
@@ -1943,23 +1947,28 @@ function freelGrupoTitulo(g){
 function freelRelatorioHTML(){
   var linhas=freelLinhas(), sens=canSens();
   if(!linhas.length) return '<div class="card muted" style="padding:16px">Nenhum evento encontrado com o filtro atual.</div>';
-  var tot=0, pessoas={}; linhas.forEach(function(l){ tot+=evNum(l.ev.valor); pessoas[l.f.id]=1; });
+  var tot=0, pessoas={}, qtd=0; linhas.forEach(function(l){ tot+=evTotal(l.ev); pessoas[l.f.id]=1; qtd+=evQtd(l.ev); });
+  var nF=Object.keys(pessoas).length, ck='tbl_freelrel_'+FREEL_FILTRO.modo+(sens?'_s':'');
   var h='<div class="card" style="margin-bottom:12px"><div class="flex" style="gap:10px;flex-wrap:wrap;align-items:center">'+
     '<span class="chip c-info">🎯 '+esc(freelFiltroDesc())+'</span>'+
-    '<span class="chip c-ok">👥 '+Object.keys(pessoas).length+' pessoa(s)</span>'+
-    '<span class="chip c-ok">🎤 '+linhas.length+' participação(ões)</span>'+
-    (sens?'<span class="chip c-warn">💰 '+money(tot)+'</span>':'<span class="chip c-mut">🔒 valores restritos</span>')+'</div></div>';
+    '<span class="chip c-ok" style="font-size:13px">👥 <b>'+qtd+'</b> pessoa'+(qtd!==1?'s':'')+' no total</span>'+
+    '<span class="chip c-mut">'+nF+' freelancer'+(nF!==1?'s':'')+' contratado'+(nF!==1?'s':'')+(qtd>linhas.length?' + '+(qtd-linhas.length)+' da equipe':'')+'</span>'+
+    (sens?'<span class="chip c-warn">💰 '+money(tot)+'</span>':'<span class="chip c-mut">🔒 valores restritos</span>')+
+    '<button class="btn ghost sm right" title="Volta as colunas ao tamanho padrão" onclick="resetColW(\''+ck+'\')">↺ Larguras</button></div>'+
+    '<div class="muted" style="font-size:11px;margin-top:6px">↔ Arraste a borda do cabeçalho das colunas para ajustar a largura — fica salvo neste computador.</div></div>';
+  var gi=0;
   freelGrupos(linhas).forEach(function(g){
     h+='<div class="card" style="margin-bottom:12px"><div class="xrow"><div class="section-title">'+(FREEL_FILTRO.modo==='uf'?ufChip(g.nome)+' ':'🎤 ')+esc(freelGrupoTitulo(g))+'</div>'+
-       '<span class="muted" style="font-size:12px">'+Object.keys(g.pessoas).length+' pessoa(s) · '+g.linhas.length+' participação(ões)'+(sens?' · <b style="color:var(--grn)">'+money(g.tot)+'</b>':'')+'</span></div>';
-    h+='<div class="tablewrap"><table><thead><tr><th>Freelancer</th>'+(sens?'<th>CPF</th>':'')+'<th>Telefone</th><th>Função</th>'+
+       '<span class="muted" style="font-size:12px"><b style="color:var(--txt)">👥 '+g.qtd+' pessoa'+(g.qtd!==1?'s':'')+'</b> · '+Object.keys(g.pessoas).length+' freelancer(s)'+(sens?' · <b style="color:var(--grn)">'+money(g.tot)+'</b>':'')+'</span></div>';
+    h+='<div class="tablewrap"><table class="freel-rel" id="'+ck+'_'+(gi++)+'" data-colkey="'+ck+'"><thead><tr><th>Freelancer</th>'+(sens?'<th>CPF</th>':'')+'<th>Telefone</th><th>Função</th><th>Pessoas</th>'+
        (FREEL_FILTRO.modo==='uf'?'<th>Evento</th>':'<th>UF</th>')+'<th>Local</th><th>Período</th><th>Dias</th>'+(sens?'<th style="text-align:right">Cachê</th>':'')+'</tr></thead><tbody>';
     g.linhas.forEach(function(l){
       h+='<tr style="cursor:pointer" onclick="openFreel(\''+l.f.id+'\')"><td><b>'+esc(l.f.nome||'—')+'</b></td>'+(sens?'<td>'+esc(l.f.cpf||'—')+'</td>':'')+
          '<td>'+esc(l.f.telefone||'—')+'</td><td>'+esc(l.ev.funcao||'—')+'</td>'+
+         '<td>'+(evQtd(l.ev)>1?'<b>'+evQtd(l.ev)+'</b> <span class="muted" style="font-size:11px">(ele + '+(evQtd(l.ev)-1)+')</span>':'1')+(l.ev.equipe_obs?'<div class="muted" style="font-size:11px">'+esc(l.ev.equipe_obs)+'</div>':'')+'</td>'+
          (FREEL_FILTRO.modo==='uf'?'<td>'+esc(evNome(l.ev)||'—')+'</td>':'<td>'+ufChip(l.ev.estado)+'</td>')+
          '<td>'+esc(l.ev.local||'—')+'</td><td style="white-space:nowrap">'+esc(evPeriodo(l.ev).replace(/ \(.*\)$/,'')||'—')+'</td><td>'+evDias(l.ev)+'</td>'+
-         (sens?'<td style="text-align:right;white-space:nowrap">'+(l.ev.valor?money(l.ev.valor):'—')+'</td>':'')+'</tr>';
+         (sens?'<td style="text-align:right;white-space:nowrap">'+(l.ev.valor?'<b>'+money(evTotal(l.ev))+'</b>'+(evQtd(l.ev)>1?'<div class="muted" style="font-size:11px">'+evQtd(l.ev)+' × '+money(l.ev.valor)+'</div>':''):'—')+'</td>':'')+'</tr>';
     });
     h+='</tbody></table></div></div>';
   });
@@ -1970,36 +1979,36 @@ function freelRelatorioHTML(){
 function freelPDF(){
   normFreelAll();
   var linhas=freelLinhas(), sens=canSens(), porUF=FREEL_FILTRO.modo==='uf', F=FREEL_FILTRO;
-  var tot=0, pessoas={}; linhas.forEach(function(l){ tot+=evNum(l.ev.valor); pessoas[l.f.id]=1; });
+  var tot=0, pessoas={}, qtd=0; linhas.forEach(function(l){ tot+=evTotal(l.ev); pessoas[l.f.id]=1; qtd+=evQtd(l.ev); });
   var grupos=freelGrupos(linhas);
   var titulo=F.valor?(porUF?ufNome(F.valor)+' ('+F.valor+')':F.valor):(porUF?'Todos os estados':'Todos os eventos');
   var nP=Object.keys(pessoas).length;
   var h='<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de Freelancers - '+esc(titulo)+'</title><style>'+
     '@page{size:A4;margin:0}'+
     '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
-    'body{margin:0;font-family:Helvetica,Arial,sans-serif;color:#1b1c21;font-size:11px}'+
+    'body{margin:0;font-family:Helvetica,Arial,sans-serif;color:#1b1c21;font-size:13px}'+
     '.hd{background:#1b1c21;color:#fff;padding:22px 34px 18px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #e10600}'+
-    '.hd h1{margin:0;font-size:21px;font-weight:bold} .hd .s{color:#b9bcc6;font-size:11px;margin-top:4px}'+
-    '.hd .r{text-align:right;color:#b9bcc6;font-size:10.5px;line-height:1.7}'+
+    '.hd h1{margin:0;font-size:24px;font-weight:bold} .hd .s{color:#b9bcc6;font-size:12.5px;margin-top:4px}'+
+    '.hd .r{text-align:right;color:#b9bcc6;font-size:12px;line-height:1.7}'+
     '.wrap{padding:22px 34px 10px}'+
-    '.nm{font-size:17px;font-weight:bold;text-transform:uppercase;margin:0} .nm2{color:#666;font-size:10.5px;text-transform:uppercase;margin-top:3px}'+
-    '.lbl{color:#8a8d96;font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.3px;margin-top:14px}'+
-    '.val{font-size:11.5px;margin-top:2px;text-transform:uppercase}'+
+    '.nm{font-size:20px;font-weight:bold;text-transform:uppercase;margin:0} .nm2{color:#666;font-size:12px;text-transform:uppercase;margin-top:3px}'+
+    '.lbl{color:#8a8d96;font-size:10.5px;font-weight:bold;text-transform:uppercase;letter-spacing:.3px;margin-top:14px}'+
+    '.val{font-size:13px;margin-top:2px;text-transform:uppercase}'+
     '.box{border:1.5px solid #e10600;border-radius:9px;padding:14px 16px;margin:18px 0 20px}'+
     '.box .row{display:flex;justify-content:space-between;align-items:flex-start}'+
-    '.box .k{color:#666;font-size:10px} .box .big{font-size:18px;font-weight:bold;margin-top:2px} .box .red{color:#e10600;font-size:22px;font-weight:bold;margin-top:2px}'+
-    '.box .ft{border-top:1px solid #e3e3e3;margin-top:12px;padding-top:9px;color:#444;font-size:10px;line-height:1.6}'+
-    'h2{font-size:12.5px;margin:18px 0 7px;display:flex;justify-content:space-between;align-items:baseline}'+
-    'h2 small{font-weight:normal;color:#666;font-size:10px}'+
+    '.box .k{color:#666;font-size:12px} .box .big{font-size:22px;font-weight:bold;margin-top:2px} .box .red{color:#e10600;font-size:26px;font-weight:bold;margin-top:2px}'+
+    '.box .ft{border-top:1px solid #e3e3e3;margin-top:12px;padding-top:9px;color:#444;font-size:12px;line-height:1.6}'+
+    'h2{font-size:15px;margin:22px 0 8px;display:flex;justify-content:space-between;align-items:baseline}'+
+    'h2 small{font-weight:normal;color:#666;font-size:12px}'+
     'table{border-collapse:collapse;width:100%;margin-bottom:6px}'+
-    'th{background:#1b1c21;color:#fff;font-size:9.5px;text-align:left;padding:7px 8px;font-weight:bold}'+
-    'td{padding:6px 8px;font-size:10px;border-bottom:1px solid #eee} tbody tr:nth-child(even) td{background:#f6f6f7}'+
+    'th{background:#1b1c21;color:#fff;font-size:12px;text-align:left;padding:11px 10px;font-weight:bold}'+
+    'td{padding:11px 10px;font-size:12.5px;border-bottom:1px solid #eee;vertical-align:top} tbody tr:nth-child(even) td{background:#f6f6f7}'+
     'td.r,th.r{text-align:right;white-space:nowrap}'+
     'tr.sub td{background:#fdecec!important;font-weight:bold;border-bottom:0}'+
-    '.tot{display:flex;justify-content:space-between;align-items:center;border:1.5px solid #e10600;border-radius:9px;padding:11px 16px;margin-top:18px;font-weight:bold;font-size:12px}'+
-    '.tot b{color:#e10600;font-size:17px}'+
-    '.note{margin-top:14px;color:#777;font-size:9.5px;line-height:1.5}'+
-    '.foot{text-align:center;color:#a0a3ab;font-size:9px;padding:18px 34px 22px}'+
+    '.tot{display:flex;justify-content:space-between;align-items:center;border:1.5px solid #e10600;border-radius:9px;padding:14px 18px;margin-top:18px;font-weight:bold;font-size:14px}'+
+    '.tot b{color:#e10600;font-size:22px}'+
+    '.note{margin-top:14px;color:#777;font-size:11px;line-height:1.5}'+
+    '.foot{text-align:center;color:#a0a3ab;font-size:10.5px;padding:18px 34px 22px}'+
     'h2,tr,.box,.tot{break-inside:avoid}'+
     '</style></head><body>';
   h+='<div class="hd"><div><h1>Relatório de Freelancers</h1><div class="s">ILED Produções · Departamento Pessoal</div></div>'+
@@ -2008,22 +2017,23 @@ function freelPDF(){
   h+='<div class="nm">'+esc(titulo)+'</div><div class="nm2">'+(porUF?'Estado (UF) da prestação de serviço':'Evento de serviço prestado')+(FREEL_Q?' · busca: '+esc(FREEL_Q):'')+'</div>';
   h+='<div class="lbl">Gerado por</div><div class="val">'+esc(getUserName())+' · '+fmtDateTime(new Date().toISOString())+'</div>';
   h+='<div class="lbl">Agrupamento</div><div class="val">'+grupos.length+' '+(porUF?'estado(s)':'evento(s)')+'</div>';
-  h+='<div class="box"><div class="row"><div><div class="k">Freelancers no relatório</div><div class="big">'+nP+' pessoa'+(nP!==1?'s':'')+'</div></div>'+
+  h+='<div class="box"><div class="row"><div><div class="k">Pessoas totais no local</div><div class="big">'+qtd+' pessoa'+(qtd!==1?'s':'')+'</div>'+
+     '<div class="k" style="margin-top:3px">'+nP+' freelancer'+(nP!==1?'s':'')+' contratado'+(nP!==1?'s':'')+(qtd>linhas.length?' + '+(qtd-linhas.length)+' da equipe deles':'')+'</div></div>'+
      (sens?'<div style="text-align:right"><div class="k">Total de cachês</div><div class="red">'+money(tot)+'</div></div>':'')+'</div>'+
      '<div class="ft">'+linhas.length+' participação(ões) em '+grupos.length+' '+(porUF?'estado(s)':'evento(s)')+'.'+(sens?'':' CPF e valores omitidos — usuário sem permissão para dados sensíveis.')+'</div></div>';
   if(!linhas.length) h+='<p>Nenhum evento encontrado com o filtro atual.</p>';
-  var ncol=5+(sens?2:0);
+  var ncol=6+(sens?2:0);
   grupos.forEach(function(g){
-    h+='<h2>'+esc(freelGrupoTitulo(g))+'<small>'+Object.keys(g.pessoas).length+' pessoa(s)'+(sens?' · '+money(g.tot):'')+'</small></h2>';
-    h+='<table><thead><tr><th>#</th><th>Freelancer</th>'+(sens?'<th>CPF</th>':'')+'<th>Telefone</th><th>MEI</th><th>Função</th>'+(porUF?'<th>Evento</th>':'<th>UF</th>')+(sens?'<th class="r">Cachê</th>':'')+'</tr></thead><tbody>';
+    h+='<h2>'+esc(freelGrupoTitulo(g))+'<small>'+g.qtd+' pessoa(s) no total · '+Object.keys(g.pessoas).length+' freelancer(s)'+(sens?' · '+money(g.tot):'')+'</small></h2>';
+    h+='<table><thead><tr><th>#</th><th>Freelancer</th>'+(sens?'<th>CPF</th>':'')+'<th>Telefone</th><th>MEI</th><th>Função</th><th>Pessoas</th>'+(porUF?'<th>Evento</th>':'<th>UF</th>')+(sens?'<th class="r">Cachê por pessoa</th><th class="r">Total</th>':'')+'</tr></thead><tbody>';
     g.linhas.forEach(function(l,i){
       h+='<tr><td>'+(i+1)+'</td><td><b>'+esc(l.f.nome||'—')+'</b></td>'+(sens?'<td>'+esc(l.f.cpf||'—')+'</td>':'')+'<td>'+esc(l.f.telefone||'—')+'</td><td>'+esc(l.f.mei||'—')+'</td>'+
-         '<td>'+esc(l.ev.funcao||'—')+'</td>'+(porUF?'<td>'+esc(evNome(l.ev)||'—')+'</td>':'<td>'+esc(l.ev.estado||'—')+'</td>')+(sens?'<td class="r">'+(l.ev.valor?money(l.ev.valor):'—')+'</td>':'')+'</tr>';
+         '<td>'+esc(l.ev.funcao||'—')+'</td><td>'+evQtd(l.ev)+(evQtd(l.ev)>1?' <span style="color:#777">(ele + '+(evQtd(l.ev)-1)+')</span>':'')+(l.ev.equipe_obs?'<div style="color:#777;font-size:11px">'+esc(l.ev.equipe_obs)+'</div>':'')+'</td>'+(porUF?'<td>'+esc(evNome(l.ev)||'—')+'</td>':'<td>'+esc(l.ev.estado||'—')+'</td>')+(sens?'<td class="r">'+(l.ev.valor?money(l.ev.valor):'—')+'</td><td class="r"><b>'+(l.ev.valor?money(evTotal(l.ev)):'—')+'</b></td>':'')+'</tr>';
     });
-    if(sens) h+='<tr class="sub"><td colspan="'+(ncol)+'">Subtotal — '+esc(freelGrupoTitulo(g))+'</td><td class="r">'+money(g.tot)+'</td></tr>';
+    h+='<tr class="sub"><td colspan="'+(sens?ncol+1:ncol-2)+'">Subtotal — '+esc(freelGrupoTitulo(g))+' · '+g.qtd+' pessoa(s) no total</td>'+(sens?'<td class="r">'+money(g.tot)+'</td>':'<td></td>')+'</tr>';
     h+='</tbody></table>';
   });
-  if(linhas.length&&sens) h+='<div class="tot">TOTAL GERAL DE CACHÊS<b>'+money(tot)+'</b></div>';
+  if(linhas.length) h+='<div class="tot">TOTAL DE PESSOAS NO LOCAL<b>'+qtd+'</b></div>';
   h+='<div class="note">Documento interno. Contém dados pessoais protegidos pela LGPD — não compartilhe fora das áreas autorizadas.</div>';
   h+='</div><div class="foot">Documento gerado automaticamente pelo Painel DP · ILED Produções</div>';
   h+='</body></html>';
@@ -2042,20 +2052,20 @@ function freelNomeArquivo(ext){
 function freelPlanilhaDados(){
   normFreelAll();
   var linhas=freelLinhas(), sens=canSens();
-  var cab=['Freelancer'].concat(sens?['CPF']:[]).concat(['Data de nascimento','Telefone','MEI (CNPJ)','Endereço','Estado (UF)','Evento','Função']).concat(sens?['Cachê (R$)']:[]);
+  var cab=['Freelancer'].concat(sens?['CPF']:[]).concat(['Data de nascimento','Telefone','MEI (CNPJ)','Endereço','Estado (UF)','Evento','Função','Qtd. pessoas (ele + equipe)','Equipe / observação']).concat(sens?['Cachê por pessoa (R$)','Total do evento (R$)']:[]);
   var det=[['Relatório de Freelancers — DP ILED'],['Filtro: '+freelFiltroDesc()],['Gerado em '+fmtDateTime(new Date().toISOString())+' por '+getUserName()],[],cab];
   linhas.forEach(function(l){
     var r=[l.f.nome||''];
     if(sens) r.push(l.f.cpf||'');
-    r=r.concat([fmtD(l.f.nascimento),l.f.telefone||'',l.f.mei||'',l.f.endereco||'',l.ev.estado||'',evNome(l.ev),l.ev.funcao||'']);
-    if(sens) r.push(evNum(l.ev.valor)||'');
+    r=r.concat([fmtD(l.f.nascimento),l.f.telefone||'',l.f.mei||'',l.f.endereco||'',l.ev.estado||'',evNome(l.ev),l.ev.funcao||'',evQtd(l.ev),l.ev.equipe_obs||'']);
+    if(sens){ r.push(evNum(l.ev.valor)||''); r.push(evTotal(l.ev)||''); }
     det.push(r);
   });
-  var tot=0; linhas.forEach(function(l){ tot+=evNum(l.ev.valor); });
-  if(sens&&linhas.length){ var t=new Array(cab.length-1).fill(''); t[0]='TOTAL GERAL'; det.push([]); det.push(t.concat([tot])); }
+  var tot=0, qtd=0; linhas.forEach(function(l){ tot+=evTotal(l.ev); qtd+=evQtd(l.ev); });
+  if(linhas.length){ var t=new Array(cab.length).fill(''); t[0]='TOTAL GERAL'; t[cab.indexOf('Qtd. pessoas (ele + equipe)')]=qtd; if(sens) t[cab.length-1]=tot; det.push([]); det.push(t); }
   var res=[['Resumo — '+(FREEL_FILTRO.modo==='uf'?'por Estado (UF)':'por Evento')],['Filtro: '+freelFiltroDesc()],[],
-    [FREEL_FILTRO.modo==='uf'?'Estado (UF)':'Evento','Pessoas','Participações'].concat(sens?['Total de cachês (R$)']:[])];
-  freelGrupos(linhas).forEach(function(g){ res.push([freelGrupoTitulo(g),Object.keys(g.pessoas).length,g.linhas.length].concat(sens?[g.tot]:[])); });
+    [FREEL_FILTRO.modo==='uf'?'Estado (UF)':'Evento','Pessoas totais no local','Freelancers contratados','Da equipe deles'].concat(sens?['Total de cachês (R$)']:[])];
+  freelGrupos(linhas).forEach(function(g){ res.push([freelGrupoTitulo(g),g.qtd,Object.keys(g.pessoas).length,g.qtd-g.linhas.length].concat(sens?[g.tot]:[])); });
   return {det:det,res:res,cab:cab,sens:sens};
 }
 function freelXLSX(){
@@ -2067,7 +2077,7 @@ function freelXLSX(){
       ws['!cols']=d.cab.map(function(c){ return {wch:Math.max(12,Math.min(38,c.length+6))}; });
       ws['!cols'][0]={wch:36};
       XLSX.utils.book_append_sheet(wb,ws,'Detalhe');
-      var ws2=XLSX.utils.aoa_to_sheet(d.res); ws2['!cols']=[{wch:40},{wch:10},{wch:14},{wch:20}];
+      var ws2=XLSX.utils.aoa_to_sheet(d.res); ws2['!cols']=[{wch:40},{wch:22},{wch:22},{wch:16},{wch:20}];
       XLSX.utils.book_append_sheet(wb,ws2,'Resumo');
       XLSX.writeFile(wb,freelNomeArquivo('xlsx'));
     }catch(e){ console.warn(e); freelCSV(d); }
@@ -2122,6 +2132,11 @@ function evFld(f,ev,key,label,type){
     if(sensHidden('freelancers','valor',f.id)) return sensBox(label);
     return '<label class="fl">'+esc(label)+moneyField(raw,call+"moneyUnmask(this.value))")+'</label>';
   }
+  if(type==='qtd'){
+    var q=evQtd(ev);
+    return '<label class="fl">'+esc(label)+'<input type="number" min="1" step="1" value="'+q+'" onchange="'+call+'this.value)">'+
+      '<span class="muted" style="font-size:11px;font-weight:500">'+(q>1?'👥 Ele + '+(q-1)+' pessoa'+(q>2?'s':'')+' da equipe dele':'Só ele (1 pessoa)')+'</span></label>';
+  }
   if(type==='uf'){
     var o='<option value="">— selecione —</option>';
     UF_LIST.forEach(function(u){ o+='<option value="'+u[0]+'"'+(raw===u[0]?' selected':'')+'>'+u[0]+' — '+u[1]+'</option>'; });
@@ -2134,6 +2149,8 @@ function updEv(fid,evid,key,val){
   if(!canEditRec('freelancers',fid)){ permDenied('freelancers','editar'); return; }
   var ev=null; (f.eventos||[]).forEach(function(x){ if(x.id===evid) ev=x; }); if(!ev) return;
   if(key==='valor'){ var n=parseFloat(val); val=isNaN(n)?null:Math.round(n*100)/100; }
+  if(key==='qtd_pessoas'){ var qn=parseInt(val,10); val=(isNaN(qn)||qn<1)?1:qn; }
+  if(key==='equipe_obs') val=(''+(val||'')).trim();
   if(key==='evento'||key==='local'||key==='funcao') val=(''+(val||'')).trim();
   var old=ev[key]; ev[key]=val;
   logEdit('freelancers',{id:f.id,nome:(f.nome||'(sem nome)')+' — '+(evNome(ev)||'evento')},'ev_'+key,old,val);
@@ -2167,7 +2184,7 @@ function freelModal(f){
   var _miss=freelMissing(f);
   FREEL_MISS_MAP={}; _miss.forEach(function(m){ FREEL_MISS_MAP[m.key]=true; });
   var evs=f.eventos||[], ufsF={}; evs.forEach(function(ev){ if(ev.estado) ufsF[ev.estado]=1; });
-  var totF=0; evs.forEach(function(ev){ totF+=evNum(ev.valor); });
+  var totF=0; evs.forEach(function(ev){ totF+=evTotal(ev); });
   var h='<div class="xrow"><h2>'+esc(f.nome||'Novo freelancer')+'</h2><button class="close" onclick="closeOv()">×</button></div>';
   h+='<div class="flex" style="margin-bottom:10px;align-items:center;gap:8px;flex-wrap:wrap">'+
      (Object.keys(ufsF).length?Object.keys(ufsF).sort().map(ufChip).join(' '):'<span class="uf-badge">SEM UF</span>')+
@@ -2211,9 +2228,12 @@ function freelModal(f){
       h+=evFld(f,ev,'estado','Estado (UF) da prestação de serviço','uf');
       h+=evFld(f,ev,'local','Local de prestação de serviço','dlLocais');
       h+=evFld(f,ev,'funcao','Função de contratação','');
+      h+=evFld(f,ev,'qtd_pessoas','Qtd. de pessoas (ele + equipe dele)','qtd');
+      h+=evFld(f,ev,'equipe_obs','Equipe / observação (opcional)','');
       h+=evFld(f,ev,'periodo_inicio','Início do serviço','date');
       h+=evFld(f,ev,'periodo_fim','Fim do serviço','date');
-      h+=evFld(f,ev,'valor','Valor de cachê (R$)','money');
+      h+=evFld(f,ev,'valor',evQtd(ev)>1?'Valor de cachê POR PESSOA (R$)':'Valor de cachê (R$)','money');
+      if(evQtd(ev)>1&&ev.valor&&!sensHidden('freelancers','valor',f.id)) h+='<div class="fl" style="justify-content:flex-end"><span class="chip c-ok" style="font-size:12.5px">💰 Total do evento: '+evQtd(ev)+' × '+money(ev.valor)+' = <b>'+money(evTotal(ev))+'</b></span></div>';
       h+='</div></div>';
     });
   } else {
@@ -2310,7 +2330,7 @@ var COLW=(function(){ try{return JSON.parse(window.localStorage.getItem('dp_iled
 function saveColW(){ try{window.localStorage.setItem('dp_iled_colw',JSON.stringify(COLW));}catch(e){} }
 function makeResizable(table){
   if(!table) return;
-  var tid=table.id; if(!tid) return;
+  var tid=table.getAttribute('data-colkey')||table.id; if(!tid) return;
   table.classList.add('tbl-resizable');
   var ths=table.querySelectorAll('thead th');
   var cols=table.querySelectorAll('colgroup col');
@@ -2349,6 +2369,7 @@ function makeResizable(table){
         grip.classList.remove('active');
         var w=cols[i]?parseFloat(cols[i].style.width):th.getBoundingClientRect().width;
         if(w){ COLW[key]=Math.round(w); saveColW(); }
+        if(table.getAttribute('data-colkey')) document.querySelectorAll('table[data-colkey="'+tid+'"]').forEach(function(t2){ if(t2!==table) makeResizable(t2); });
       }
       grip.addEventListener('pointermove',onMove);
       grip.addEventListener('pointerup',onUp);
@@ -3059,7 +3080,7 @@ function initUserName(){
 }
 var FIELD_LABELS={
   estado:'Estado (UF) de prestação',ev_evento:'Evento',ev_estado:'Estado (UF) do evento',ev_local:'Local do evento',ev_funcao:'Função no evento',
-  ev_periodo_inicio:'Início do evento',ev_periodo_fim:'Fim do evento',ev_valor:'Cachê do evento',ev_novo:'Evento adicionado',ev_removido:'Evento removido',local:'Local de prestação',evento:'Evento',periodo_inicio:'Início do serviço',periodo_fim:'Fim do serviço',
+  ev_periodo_inicio:'Início do evento',ev_qtd_pessoas:'Qtd. de pessoas no evento',ev_equipe_obs:'Equipe / observação',ev_periodo_fim:'Fim do evento',ev_valor:'Cachê do evento',ev_novo:'Evento adicionado',ev_removido:'Evento removido',local:'Local de prestação',evento:'Evento',periodo_inicio:'Início do serviço',periodo_fim:'Fim do serviço',
   empresa:'Empresa',nome:'Nome',cpf:'CPF',rg:'RG',nascimento:'Data de nascimento',telefone:'Telefone',email:'E-mail',
   emergencia_nome:'Emergência (nome)',emergencia_parentesco:'Emergência (parentesco)',emergencia_telefone:'Emergência (telefone)',
   endereco:'Endereço',cidade:'Cidade',cep:'CEP',pix:'PIX',observacoes:'Observações',admissao:'Admissão',funcao:'Função',
