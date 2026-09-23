@@ -272,6 +272,27 @@ label.tgl input{width:18px;height:18px;margin-top:2px;accent-color:var(--grn)}
 .ev-card{border-left:3px solid var(--violet)}
 
 .qtd-chip{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:6px;background:rgba(61,220,132,.15);color:var(--grn);border:1px solid rgba(61,220,132,.35)}
+
+.pix-card{border-top:2px solid var(--grn)}
+.wa-btn{background:#1faa53!important;border-color:#1faa53!important;color:#fff!important}
+.pix-prev{margin-top:10px;padding:12px 14px;border-radius:12px;background:#0b3d2a;border:1px solid rgba(61,220,132,.35);color:#e9fff2;font-size:13px;line-height:1.55;white-space:normal}
+
+.pix-bell{background:rgba(255,176,32,.18)!important;border-color:rgba(255,176,32,.6)!important;color:#ffc457!important;animation:bellpulse 1.6s ease-in-out infinite}
+@keyframes bellpulse{0%,100%{box-shadow:0 0 0 0 rgba(255,176,32,.45)}50%{box-shadow:0 0 0 6px rgba(255,176,32,0)}}
+.pix-avisos{margin-bottom:12px;border-top:2px solid #ffb020}
+.pix-aviso-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-bottom:1px dashed var(--line)}
+.pix-aviso-line:last-child{border-bottom:0}
+.pix-corr{margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(255,176,32,.1);border:1px solid rgba(255,176,32,.45);font-size:12.5px}
+.pix-key{font-weight:800;color:var(--txt);letter-spacing:.3px}
+
+.section-title.col-title{cursor:pointer;user-select:none}
+.section-title.col-title:hover{color:#fff}
+.col-arrow{display:inline-block;width:16px;margin-right:4px;color:var(--mut);font-size:12px;transition:transform .15s}
+.card.collapsed > :not(.col-head){display:none!important}
+.card.collapsed{padding-bottom:12px}
+.card.collapsed > .col-head{margin-bottom:0!important}
+.card.collapsed .col-head .section-title{margin-bottom:0}
+.col-bar{display:flex;gap:6px;justify-content:flex-end;margin:-4px 0 10px}
 </style>
 </head>
 <body>
@@ -286,6 +307,7 @@ label.tgl input{width:18px;height:18px;margin-top:2px;accent-color:var(--grn)}
   <div class="dbchip">
     <span id="dbdot" class="dot off"></span>
     <span id="dbtxt" class="muted" style="font-size:12px">Modo local</span>
+    <button class="btn sm pix-bell" id="pixBell" style="display:none" onclick="go('freelancers')">🔔</button>
     <button class="btn ghost sm" id="userChip" title="Usuário conectado">👤 <span id="userChipName"></span></button>
     <button class="btn ghost sm" onclick="logout()" title="Sair e bloquear o painel">🚪 Sair</button>
     <button class="btn ghost sm" onclick="openCfg()">⚙ Banco</button>
@@ -476,7 +498,7 @@ var ALLOWED={
   ferias:['id','empresa','colaborador','inicio','fim','dias','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   folha:['id','empresa','competencia','qtd','liquido','gratif','pensao','total','editando','atualizado_em'],
   custos:['id','empresa','competencia','descricao','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
-  freelancers:['id','nome','nascimento','cpf','telefone','endereco','mei','estado','local','evento','periodo_inicio','periodo_fim','valor','funcao','eventos','nr06','nr10','nr11','nr18','nr35','bloqueado','atualizado_em']
+  freelancers:['id','nome','nascimento','cpf','telefone','endereco','mei','estado','local','evento','periodo_inicio','periodo_fim','valor','funcao','eventos','pix','pix_tipo','pix_msg_em','pix_token','nr06','nr10','nr11','nr18','nr35','bloqueado','atualizado_em']
 };
 function isISODate(v){ return /^\d{4}-\d{2}-\d{2}/.test(''+v); }
 function cleanRow(t,src){
@@ -1691,6 +1713,257 @@ function feriasPanel(){
   return h;
 }
 
+
+/* ================= 💸 PIX DO FREELANCER + MENSAGEM DE CONFIRMAÇÃO (WhatsApp) =================
+   O painel é um arquivo HTML: ele não dispara WhatsApp sozinho em segundo plano.
+   Ele abre o WhatsApp (Web ou app) com a mensagem JÁ ESCRITA para o número do freelancer —
+   basta clicar em Enviar. Com a opção "sempre" ligada, isso acontece automaticamente
+   toda vez que uma chave PIX é cadastrada ou alterada. */
+var PIX_TIPOS=['CPF','CNPJ','Telefone','E-mail','Chave aleatória'];
+var PIX_TPL_PADRAO='Olá, {primeiro_nome}! Tudo bem?\nAqui é do Departamento Pessoal da ILED Produções.\n\nPara o pagamento do seu cachê{evento_txt}, poderia confirmar se a chave PIX abaixo está correta?\n\n*Chave PIX ({tipo}):* {pix}\n*Titular:* {nome}\n\n{confirmacao}\n\nObrigado!';
+function pixAutoOn(){ try{ return window.localStorage.getItem('dp_iled_pix_auto')!=='0'; }catch(e){ return true; } }
+function setPixAuto(on){ try{ window.localStorage.setItem('dp_iled_pix_auto',on?'1':'0'); }catch(e){} }
+function pixTpl(){ try{ return window.localStorage.getItem('dp_iled_pix_tpl')||PIX_TPL_PADRAO; }catch(e){ return PIX_TPL_PADRAO; } }
+function setPixTpl(v){ try{ if(!v||v===PIX_TPL_PADRAO) window.localStorage.removeItem('dp_iled_pix_tpl'); else window.localStorage.setItem('dp_iled_pix_tpl',v); }catch(e){} }
+function waFone(tel){
+  var d=(''+(tel||'')).replace(/\D/g,'');
+  if(d.indexOf('00')===0) d=d.slice(2);
+  if(d.length===10||d.length===11) d='55'+d;
+  return (d.length>=12&&d.length<=13)?d:'';
+}
+/* evento mais recente do freelancer (para citar na mensagem) */
+function freelUltEvento(f){
+  var evs=(f.eventos||[]).slice().sort(function(a,b){ return (''+(b.periodo_inicio||'')).localeCompare(''+(a.periodo_inicio||'')); });
+  return evs[0]||null;
+}
+function pixMensagem(f){
+  var ev=freelUltEvento(f), nome=(''+(f.nome||'')).trim();
+  var primeiro=nome.split(/\s+/)[0]||nome;
+  primeiro=primeiro.charAt(0).toUpperCase()+primeiro.slice(1).toLowerCase();
+  var vars={
+    nome:nome, primeiro_nome:primeiro, pix:f.pix||'', tipo:f.pix_tipo||'chave',
+    evento:ev?evNome(ev):'', evento_txt:ev&&evNome(ev)?' referente ao evento *'+evNome(ev)+'*':'',
+    valor:ev&&ev.valor?money(evTotal(ev)):'', data:ev&&ev.periodo_inicio?fmtD(ev.periodo_inicio):'',
+    link:pixLink(f),
+    confirmacao:pixLink(f)?'*Para confirmar (ou corrigir) sua chave, toque no link abaixo:*\n'+pixLink(f):'Responda *SIM* para confirmar ou nos envie a chave correta.'
+  };
+  var tpl=pixTpl();
+  // mensagens salvas no formato antigo: troca o "Responda SIM" pelo link de confirmação
+  tpl=tpl.replace(/Responda \*?SIM\*? para confirmar ou nos envie a chave correta\.?[ \t]*/,'{confirmacao}\n\n');
+  if(vars.link&&tpl.indexOf('{link}')<0&&tpl.indexOf('{confirmacao}')<0) tpl+='\n\nConfirme sua chave aqui: {link}';
+  var txt=tpl.replace(/\{(\w+)\}/g,function(m,k){ return vars.hasOwnProperty(k)?vars[k]:m; });
+  // remove emojis: o WhatsApp Web/Desktop no Windows costuma trocá-los por "�"
+  try{ txt=txt.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu,''); }catch(e){}
+  return txt.replace(/[ \t]+\n/g,'\n').replace(/\n[ \t]+/g,'\n').replace(/ {2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+}
+function pixStatusHTML(f){
+  if(!f.pix) return '<span class="chip c-mut">Sem PIX cadastrado</span>';
+  if(f.pix_resp==='corrigir') return '<span class="chip c-warn">✏️ Freelancer pediu correção em '+fmtDateTime(f.pix_resp_em)+'</span>';
+  if(f.pix_conf_em) return '<span class="chip c-ok">✅ PIX confirmado em '+fmtDateTime(f.pix_conf_em)+(f.pix_resp==='sim'?' — pelo próprio freelancer (link)':f.pix_resp==='corrigida'?' — chave informada pelo próprio freelancer (link)':f.pix_resp==='manual'?' — marcado pela DP':'')+'</span>';
+  if(f.pix_msg_em) return '<span class="chip c-warn">⏳ Mensagem enviada em '+fmtDateTime(f.pix_msg_em)+' — aguardando resposta</span>';
+  return '<span class="chip c-crit">⚠ PIX ainda não confirmado</span>';
+}
+function pixChipCard(f){
+  if(!f.pix||!canSens()) return '';
+  if(f.pix_resp==='corrigir') return '<span class="chip c-crit" title="Freelancer pediu correção da chave">PIX ✏️</span>';
+  if(f.pix_conf_em) return '<span class="chip c-ok" title="PIX confirmado">PIX ✅</span>';
+  return '<span class="chip c-warn" title="PIX ainda não confirmado pelo freelancer">PIX ⏳</span>';
+}
+function pixEnviar(fid,auto){
+  var f=find('freelancers',fid); if(!f) return;
+  if(!f.pix){ showWarn('Cadastre a chave PIX antes de enviar a confirmação.'); return; }
+  var fone=waFone(f.telefone);
+  if(!fone){ showWarn('📵 Telefone do freelancer inválido para WhatsApp — confira o DDD e o número.'); return; }
+  if(!f.pix_token&&canEditRec('freelancers',fid)){ f.pix_token=genToken(); saveLocal(); persist('freelancers',f); }
+  var url='https://api.whatsapp.com/send?phone='+fone+'&text='+encodeURIComponent(pixMensagem(f));
+  var w=window.open(url,'_blank');
+  if(!w){
+    // navegador bloqueou a abertura automática: mostra o botão para um clique
+    showWarn('O navegador bloqueou a abertura automática — clique em "💬 Enviar confirmação" na ficha.');
+    return;
+  }
+  var agora=new Date().toISOString();
+  if(canEditRec('freelancers',fid)){
+    var old=f.pix_msg_em; f.pix_msg_em=agora;
+    logEdit('freelancers',f,'pix_msg_em',old,agora);
+    saveLocal(); persist('freelancers',f);
+  }
+  if(window._curFreel===fid&&document.getElementById('overlay').className.indexOf('show')>=0) document.getElementById('modal').innerHTML=freelModal(f);
+}
+function pixConfirmado(fid,sim){
+  var f=find('freelancers',fid); if(!f) return;
+  if(!canEditRec('freelancers',fid)){ permDenied('freelancers','editar'); return; }
+  var old=f.pix_conf_em, nv=sim?new Date().toISOString():null;
+  logEdit('freelancers',f,'pix_conf_em',old,nv||'');
+  pixLimparResposta(fid,{pix_conf_em:nv,pix_resp:sim?'manual':null,pix_resp_em:sim?nv:null});
+  saveLocal();
+  document.getElementById('modal').innerHTML=freelModal(f);
+}
+function pixCardHTML(f){
+  if(sensHidden('freelancers','pix',f.id)) return '<div class="card" style="margin-bottom:14px"><div class="section-title">💸 Dados para pagamento (PIX)</div><div class="sens-box">🔒 Dado restrito</div></div>';
+  var h='<div class="card pix-card" style="margin-bottom:14px"><div class="section-title">💸 Dados para pagamento (PIX)</div><div class="formgrid">';
+  var o='<option value="">— tipo de chave —</option>';
+  PIX_TIPOS.forEach(function(t){ o+='<option'+(f.pix_tipo===t?' selected':'')+'>'+t+'</option>'; });
+  h+='<label class="fl">Tipo da chave PIX<select onchange="upd(\'freelancers\',\''+f.id+'\',\'pix_tipo\',this.value)">'+o+'</select></label>';
+  h+='<label class="fl">Chave PIX<input type="text" value="'+esc(f.pix||'')+'" placeholder="CPF, CNPJ, telefone, e-mail ou chave aleatória" onchange="upd(\'freelancers\',\''+f.id+'\',\'pix\',this.value.trim())"></label>';
+  h+='</div>';
+  h+='<div class="flex" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">'+pixStatusHTML(f)+'</div>';
+  if(f.pix_resp==='corrigir'&&f.pix_sugerida){
+    h+='<div class="pix-corr"><div>✏️ <b>'+esc((f.nome||'').split(' ')[0])+' informou outra chave:</b> <span class="pix-key">'+esc(f.pix_sugerida)+'</span> <span class="muted">('+esc(f.pix_sugerida_tipo||'tipo não informado')+')</span></div>'+
+       '<div class="flex" style="gap:8px;margin-top:8px"><button class="btn sm" onclick="pixAplicarSugerida(\''+f.id+'\')">✅ Aplicar esta chave</button>'+
+       '<button class="btn ghost sm" onclick="pixDescartarSugerida(\''+f.id+'\')">✖ Descartar</button></div></div>';
+  }
+  if(!pixConfUrl()) h+='<div class="muted" style="font-size:11.5px;margin-top:8px">🔗 A página de confirmação ainda não foi configurada — a mensagem sai pedindo resposta "SIM" pelo WhatsApp. '+(isMaster()?'Configure em <b>⚙ Banco → Página de confirmação do PIX</b>.':'Peça à administradora para configurar.')+'</div>';
+  else if(f.pix_aviso) h+='<div style="margin-top:8px"><button class="btn ghost sm" onclick="pixCiente(\''+f.id+'\');freelSub(\'dados\')">✔ Marcar aviso como visto</button></div>';
+  h+='<div class="flex" style="margin-top:10px;gap:8px;flex-wrap:wrap">';
+  h+='<button class="btn sm wa-btn" onclick="pixEnviar(\''+f.id+'\')" '+(f.pix?'':'disabled')+'>💬 Enviar confirmação pelo WhatsApp</button>';
+  if(f.pix&&!f.pix_conf_em) h+='<button class="btn ghost sm" onclick="pixConfirmado(\''+f.id+'\',true)">✅ Freelancer confirmou</button>';
+  if(f.pix_conf_em) h+='<button class="btn ghost sm" onclick="pixConfirmado(\''+f.id+'\',false)">↺ Desfazer confirmação</button>';
+  h+='<button class="btn ghost sm" onclick="window._pixPrev=!window._pixPrev;freelSub(\'dados\')">'+(window._pixPrev?'▲ Ocultar':'👁 Ver')+' mensagem</button>';
+  h+='</div>';
+  if(!waFone(f.telefone)) h+='<div class="muted" style="font-size:11.5px;margin-top:6px">📵 Para enviar pelo WhatsApp, o telefone precisa estar com DDD (ex.: 61 99999-9999).</div>';
+  if(window._pixPrev){
+    h+='<div class="pix-prev">'+esc(pixMensagem(f)).replace(/\n/g,'<br>')+'</div>';
+    h+='<details style="margin-top:8px"><summary class="muted" style="cursor:pointer;font-size:12px">✏️ Editar a mensagem padrão (vale para todos os freelancers neste computador)</summary>'+
+       '<textarea id="pixTpl" rows="9" style="width:100%;margin-top:8px;box-sizing:border-box">'+esc(pixTpl())+'</textarea>'+
+       '<div class="muted" style="font-size:11px;margin:4px 0 6px">Variáveis: {nome} · {primeiro_nome} · {pix} · {tipo} · {evento} · {evento_txt} · {valor} · {data}</div>'+
+       '<div class="flex"><button class="btn sm" onclick="setPixTpl(document.getElementById(\'pixTpl\').value);freelSub(\'dados\');showWarn(\'✅ Mensagem padrão salva.\')">💾 Salvar mensagem</button>'+
+       '<button class="btn ghost sm" onclick="setPixTpl(\'\');freelSub(\'dados\')">↺ Voltar ao texto original</button></div></details>';
+  }
+  h+='<label class="tgl" style="margin-top:12px"><input type="checkbox"'+(pixAutoOn()?' checked':'')+' onchange="setPixAuto(this.checked)"> <span><b>Sempre abrir a mensagem de confirmação automaticamente</b><br><small class="muted">Toda vez que uma chave PIX for cadastrada ou alterada, o WhatsApp abre com a mensagem pronta para o contato do freelancer.</small></span></label>';
+  h+='</div>';
+  return h;
+}
+
+
+/* ================= 🔔 CONFIRMAÇÃO DO PIX POR LINK (sem API do WhatsApp) =================
+   1) A mensagem leva um link pessoal (token) para a página confirmar-pix.html
+   2) O freelancer toca em "Sim" ou informa outra chave → o Supabase grava (funções pix_consulta/pix_responder)
+   3) O painel verifica a cada 40 s e avisa: 🔔 "Fulano confirmou o PIX" */
+var DP_CONFIG={}, PIX_AVISOS=[], PIX_NOTIFICADOS={};
+function loadDpConfig(cb){
+  if(!sbConfigured()){ if(cb)cb(); return; }
+  fetch(CFG.url+'/rest/v1/dp_config?select=*',{headers:sbHeaders()})
+    .then(function(r){ return r.ok?r.json():[]; })
+    .then(function(rows){ DP_CONFIG={}; (rows||[]).forEach(function(r){ DP_CONFIG[r.id]=r.valor; }); if(cb)cb(); })
+    .catch(function(){ if(cb)cb(); });
+}
+function saveDpConfig(id,valor,cb){
+  sbUpsert('dp_config',{id:id,valor:valor,atualizado_em:new Date().toISOString()},function(ok,err){ if(ok) DP_CONFIG[id]=valor; if(cb)cb(ok,err); });
+}
+function pixConfUrl(){ return (''+(DP_CONFIG.pix_conf_url||'')).trim(); }
+function genToken(){
+  var a='abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789', t='';
+  var arr=null; try{ arr=new Uint32Array(28); window.crypto.getRandomValues(arr); }catch(e){}
+  for(var i=0;i<28;i++){ var n=arr?arr[i]:Math.floor(Math.random()*4294967296); t+=a.charAt(n%a.length); }
+  return t;
+}
+function pixLink(f){
+  var u=pixConfUrl(); if(!u||!f.pix_token) return '';
+  return u+(u.indexOf('?')>=0?'&':'?')+'c='+f.pix_token;
+}
+/* limpa, no banco, a resposta anterior do freelancer (quando a chave muda ou a DP decide) */
+function pixLimparResposta(fid,extra){
+  var patch={pix_resp:null,pix_resp_em:null,pix_sugerida:null,pix_sugerida_tipo:null,pix_aviso:false};
+  for(var k in (extra||{})) patch[k]=extra[k];
+  var f=find('freelancers',fid); if(f){ for(var k2 in patch) f[k2]=patch[k2]; }
+  PIX_AVISOS=PIX_AVISOS.filter(function(a){ return a.id!==fid; }); pixBellRender();
+  if(sbConfigured()) sbPatch(TBL.freelancers,fid,patch,function(){});
+}
+function pixAplicarSugerida(fid){
+  var f=find('freelancers',fid); if(!f||!f.pix_sugerida) return;
+  if(!canEditRec('freelancers',fid)){ permDenied('freelancers','editar'); return; }
+  var nova=f.pix_sugerida, tipo=f.pix_sugerida_tipo||f.pix_tipo;
+  if(!confirm('Trocar a chave PIX de '+(f.nome||'')+'\n\nDe: '+(f.pix||'—')+'\nPara: '+nova+' ('+(tipo||'')+')\n\nComo foi o próprio freelancer que informou esta chave, ela já fica CONFIRMADA — nenhuma mensagem nova é enviada.')) return;
+  window._pixSkipAuto=true;
+  try{
+    if(tipo) upd('freelancers',fid,'pix_tipo',tipo);
+    upd('freelancers',fid,'pix',nova);
+  } finally { window._pixSkipAuto=false; }
+  var agora=new Date().toISOString();
+  logEdit('freelancers',f,'pix_conf_em','',agora);
+  pixLimparResposta(fid,{pix_conf_em:agora,pix_resp:'corrigida',pix_resp_em:agora});
+  saveLocal();
+  if(window._curFreel===fid&&document.getElementById('overlay').className.indexOf('show')>=0) document.getElementById('modal').innerHTML=freelModal(f);
+  showWarn('✅ Chave de '+((f.nome||'').split(' ')[0])+' atualizada e confirmada (informada por ele mesmo).');
+}
+function pixDescartarSugerida(fid){
+  if(!canEditRec('freelancers',fid)){ permDenied('freelancers','editar'); return; }
+  pixLimparResposta(fid);
+  var f=find('freelancers',fid);
+  if(f&&window._curFreel===fid) document.getElementById('modal').innerHTML=freelModal(f);
+}
+function pixCiente(fid){
+  var f=find('freelancers',fid);
+  PIX_AVISOS=PIX_AVISOS.filter(function(a){ return a.id!==fid; });
+  if(f) f.pix_aviso=false;
+  if(sbConfigured()) sbPatch(TBL.freelancers,fid,{pix_aviso:false},function(){});
+  pixBellRender();
+  if(TAB==='freelancers'&&document.getElementById('overlay').className.indexOf('show')<0) render();
+}
+/* verifica respostas novas no banco */
+function pixPoll(){
+  if(!CUR_USER||!sbConfigured()||!can('freelancers','ver')) return;
+  fetch(CFG.url+'/rest/v1/'+TBL.freelancers+'?select=id,nome,pix_conf_em,pix_resp,pix_resp_em,pix_sugerida,pix_sugerida_tipo,pix_aviso&pix_aviso=eq.true',{headers:sbHeaders()})
+    .then(function(r){ return r.ok?r.json():null; })
+    .then(function(rows){
+      if(!Array.isArray(rows)) return;
+      var novos=[];
+      rows.forEach(function(r){
+        var f=find('freelancers',r.id);
+        if(f){ ['pix_conf_em','pix_resp','pix_resp_em','pix_sugerida','pix_sugerida_tipo','pix_aviso'].forEach(function(k){ f[k]=r[k]; }); }
+        var chave=r.id+'|'+r.pix_resp_em;
+        if(!PIX_NOTIFICADOS[chave]){ PIX_NOTIFICADOS[chave]=1; novos.push(r); }
+      });
+      PIX_AVISOS=rows.sort(function(a,b){ return (''+b.pix_resp_em).localeCompare(''+a.pix_resp_em); });
+      pixBellRender();
+      if(novos.length){
+        novos.forEach(function(r,i){
+          setTimeout(function(){
+            var nm=(''+(r.nome||'Freelancer')).split(/\s+/)[0];
+            showWarn(r.pix_resp==='corrigir'?'🔔 ✏️ '+nm+' pediu CORREÇÃO da chave PIX — abra a ficha para conferir.':'🔔 ✅ '+nm+' confirmou a chave PIX!');
+          },i*1800);
+        });
+        pixBeep();
+        var ovOpen=document.getElementById('overlay').className.indexOf('show')>=0;
+        if(ovOpen&&window._curFreel){ var fo=find('freelancers',window._curFreel); if(fo) document.getElementById('modal').innerHTML=freelModal(fo); }
+        else if(TAB==='freelancers') render();
+      }
+    }).catch(function(){});
+}
+function pixBeep(){
+  try{ var C=window.AudioContext||window.webkitAudioContext; if(!C) return; var c=new C(), o=c.createOscillator(), g=c.createGain();
+    o.connect(g); g.connect(c.destination); o.frequency.value=880; g.gain.value=0.06; o.start(); setTimeout(function(){ o.frequency.value=1175; },140); setTimeout(function(){ o.stop(); c.close(); },300); }catch(e){}
+}
+function pixBellRender(){
+  var b=document.getElementById('pixBell'); if(!b) return;
+  var n=PIX_AVISOS.length;
+  b.style.display=(n&&can('freelancers','ver'))?'':'none';
+  b.innerHTML='🔔 <b>'+n+'</b>';
+  b.title=n+' resposta(s) de PIX aguardando sua ciência';
+}
+function pixAvisosCardHTML(){
+  if(!PIX_AVISOS.length) return '';
+  var h='<div class="card pix-avisos"><div class="xrow"><div class="section-title">🔔 Respostas de PIX ('+PIX_AVISOS.length+')</div><span class="muted" style="font-size:11.5px">Chegam sozinhas quando o freelancer toca no link da mensagem</span></div>';
+  PIX_AVISOS.forEach(function(a){
+    var cor=a.pix_resp==='corrigir';
+    h+='<div class="pix-aviso-line">'+(cor?'<span class="chip c-warn">✏️ Pediu correção</span>':'<span class="chip c-ok">✅ Confirmou</span>')+
+       ' <b>'+esc(a.nome||'—')+'</b> <span class="muted" style="font-size:11.5px">'+(a.pix_resp_em?fmtDateTime(a.pix_resp_em):'')+'</span>'+
+       (cor&&canSens()?' <span class="muted" style="font-size:12px">→ nova chave: <b style="color:var(--txt)">'+esc(a.pix_sugerida||'')+'</b> ('+esc(a.pix_sugerida_tipo||'')+')</span>':'')+
+       '<span class="right flex" style="gap:6px"><button class="btn ghost sm" onclick="openFreel(\''+a.id+'\')">Abrir ficha</button>'+
+       (cor?'':'<button class="btn ghost sm" onclick="pixCiente(\''+a.id+'\')">✔ Ciente</button>')+'</span></div>';
+  });
+  h+='</div>';
+  return h;
+}
+setInterval(pixPoll,40000);
+
+function salvarPixUrl(){
+  var v=(document.getElementById('cfgPixUrl').value||'').trim();
+  if(v&&v.indexOf('https://')!==0){ alert('O endereço precisa começar com https://'); return; }
+  saveDpConfig('pix_conf_url',v,function(ok,e){ alert(ok?'✅ Endereço salvo para todos os usuários.':'Falha ao salvar: '+e+'\n\nConfira se a tabela dp_config foi criada no Supabase.'); if(ok) openCfg(); });
+}
+
 /* ================= FREELANCERS — BANCO DE DADOS com HISTÓRICO DE EVENTOS =================
    Cada freelancer tem os dados pessoais + uma lista de EVENTOS trabalhados (f.eventos),
    cada um com seu próprio estado (UF), local, função, período e cachê.
@@ -1799,7 +2072,7 @@ function evPassa(ev){
 }
 function freelBusca(f,q){
   if(!q) return true;
-  var txt=[f.nome,canSens()?f.cpf:'',f.mei,f.endereco,f.telefone];
+  var txt=[f.nome,canSens()?f.cpf:'',canSens()?f.pix:'',f.mei,f.endereco,f.telefone];
   (f.eventos||[]).forEach(function(ev){ txt.push(ev.evento,ev.local,ev.funcao,ev.estado,ufNome(ev.estado),ev.equipe_obs); });
   return txt.join(' ').toLowerCase().indexOf(q)>=0;
 }
@@ -1842,10 +2115,12 @@ function viewFreel(){
   var alertas=rows.filter(freelTemAlerta).length;
   var h='<div class="kpis">';
   h+=kpi('Freelancers cadastrados',rows.length,'no banco de dados',true);
+  var _avisosHTML=pixAvisosCardHTML();
   h+=kpi('Estados atendidos',ufs.length,ufs.join(' · ')||'nenhum ainda');
   h+=kpi('NRs em alerta',alertas,'vencidas ou < 30 dias');
   h+='</div>';
 
+  h+=_avisosHTML;
   // barra de filtro: Estado (UF) OU Evento
   var F=FREEL_FILTRO;
   var ov='<option value="">'+(F.modo==='uf'?'Todos os estados':'Todos os eventos')+'</option>';
@@ -1906,7 +2181,7 @@ function renderFreelList(){
       h+='<div class="card searchcard freel-card" onclick="openFreel(\''+f.id+'\')">';
       h+='<div class="flex" style="justify-content:space-between;align-items:center;gap:8px">'+
          '<span style="width:28px;height:28px;border-radius:50%;background:var(--panelh);display:flex;align-items:center;justify-content:center;flex:none;font-size:13px">🧑‍💼</span>'+
-         '<span class="nm" style="flex:1">'+esc(f.nome||'(sem nome)')+'</span>'+(alert?'<span class="chip c-warn">⚠ NR</span>':'')+'</div>';
+         '<span class="nm" style="flex:1">'+esc(f.nome||'(sem nome)')+'</span>'+pixChipCard(f)+(alert?'<span class="chip c-warn">⚠ NR</span>':'')+'</div>';
       h+='<div class="fn">'+(f.mei?'MEI '+esc(f.mei):'<span class="muted">sem MEI</span>')+' <span class="muted" style="font-size:11px">· '+totalEvs+' evento'+(totalEvs!==1?'s':'')+' no histórico</span></div>';
       if(it.evs.length){
         h+='<div class="ev">';
@@ -2052,17 +2327,17 @@ function freelNomeArquivo(ext){
 function freelPlanilhaDados(){
   normFreelAll();
   var linhas=freelLinhas(), sens=canSens();
-  var cab=['Freelancer'].concat(sens?['CPF']:[]).concat(['Data de nascimento','Telefone','MEI (CNPJ)','Endereço','Estado (UF)','Evento','Função','Qtd. pessoas (ele + equipe)','Equipe / observação']).concat(sens?['Cachê por pessoa (R$)','Total do evento (R$)']:[]);
+  var cab=['Freelancer'].concat(sens?['CPF']:[]).concat(['Data de nascimento','Telefone','MEI (CNPJ)','Endereço','Estado (UF)','Evento','Função','Qtd. pessoas (ele + equipe)','Equipe / observação']).concat(sens?['Cachê por pessoa (R$)','Total do evento (R$)','Tipo PIX','Chave PIX','PIX confirmado']:[]);
   var det=[['Relatório de Freelancers — DP ILED'],['Filtro: '+freelFiltroDesc()],['Gerado em '+fmtDateTime(new Date().toISOString())+' por '+getUserName()],[],cab];
   linhas.forEach(function(l){
     var r=[l.f.nome||''];
     if(sens) r.push(l.f.cpf||'');
     r=r.concat([fmtD(l.f.nascimento),l.f.telefone||'',l.f.mei||'',l.f.endereco||'',l.ev.estado||'',evNome(l.ev),l.ev.funcao||'',evQtd(l.ev),l.ev.equipe_obs||'']);
-    if(sens){ r.push(evNum(l.ev.valor)||''); r.push(evTotal(l.ev)||''); }
+    if(sens){ r.push(evNum(l.ev.valor)||''); r.push(evTotal(l.ev)||''); r.push(l.f.pix_tipo||''); r.push(l.f.pix||''); r.push(l.f.pix_conf_em?'Sim — '+fmtDateTime(l.f.pix_conf_em):(l.f.pix?'Não':'')); }
     det.push(r);
   });
   var tot=0, qtd=0; linhas.forEach(function(l){ tot+=evTotal(l.ev); qtd+=evQtd(l.ev); });
-  if(linhas.length){ var t=new Array(cab.length).fill(''); t[0]='TOTAL GERAL'; t[cab.indexOf('Qtd. pessoas (ele + equipe)')]=qtd; if(sens) t[cab.length-1]=tot; det.push([]); det.push(t); }
+  if(linhas.length){ var t=new Array(cab.length).fill(''); t[0]='TOTAL GERAL'; t[cab.indexOf('Qtd. pessoas (ele + equipe)')]=qtd; if(sens) t[cab.indexOf('Total do evento (R$)')]=tot; det.push([]); det.push(t); }
   var res=[['Resumo — '+(FREEL_FILTRO.modo==='uf'?'por Estado (UF)':'por Evento')],['Filtro: '+freelFiltroDesc()],[],
     [FREEL_FILTRO.modo==='uf'?'Estado (UF)':'Evento','Pessoas totais no local','Freelancers contratados','Da equipe deles'].concat(sens?['Total de cachês (R$)']:[])];
   freelGrupos(linhas).forEach(function(g){ res.push([freelGrupoTitulo(g),g.qtd,Object.keys(g.pessoas).length,g.qtd-g.linhas.length].concat(sens?[g.tot]:[])); });
@@ -2206,6 +2481,7 @@ function freelModal(f){
     h+=ffld(f,'telefone','Telefone *');
     h+=ffld(f,'mei','MEI (CNPJ)');
     h+='</div></div>';
+    h+=pixCardHTML(f);
     h+='<div class="card" style="margin-bottom:14px"><div class="section-title">🏠 Endereço</div><div class="formgrid">';
     h+='<label class="fl" style="grid-column:1/-1">Endereço completo<input type="text" value="'+esc(f.endereco||'')+'" placeholder="Rua, nº, bairro, cidade/UF, CEP" onchange="upd(\'freelancers\',\''+f.id+'\',\'endereco\',this.value)"></label>';
     h+='</div></div>';
@@ -2892,6 +3168,8 @@ function upd(t,id,key,val){
   }
   if(t==='ferias'&&key==='inicio'){ var vb=subBusinessDays(r.inicio,2); if(vb)r.vencimento=vb; }
   if(t==='rescisoes'&&key==='desligamento'){ var vr=addDays(r.desligamento,10); if(vr)r.vencimento=vr; }
+  var _pixAuto=false;
+  if(t==='freelancers'&&key==='pix'&&(_oldVal||'')!==(val||'')){ r.pix_msg_em=null; pixLimparResposta(id,{pix_conf_em:null}); _pixAuto=!!val&&pixAutoOn()&&!window._pixSkipAuto; }
   if(t==='ferias'&&key==='valor'){ var vn=parseFloat(val); if(!isNaN(vn))r.valor=Math.round(vn*100)/100; }
   if(t==='folha'||t==='custos'){ if(key==='liquido'||key==='gratif'){ r.total=num(r.liquido)+num(r.gratif); } }
   saveLocal(); persist(t,r);
@@ -2905,6 +3183,7 @@ function upd(t,id,key,val){
   if(t==='rescisoes'&&key==='tipo_desligamento'){ refreshCell('rescisoes',id,'detalhes'); refreshSubrow(id); }
   if(t==='rescisoes'&&key==='valor'){ refreshCell('rescisoes',id,'valor_total_calc'); }
   if(t==='rescisoes'&&key==='pasta'){ refreshCell('rescisoes',id,'pasta'); }
+  if(_pixAuto) pixEnviar(id,true);
 }
 function persist(t,r){
   if(TBL[t]&&!canEditRec(t,r.id)) return;
@@ -3079,7 +3358,7 @@ function initUserName(){
   if(!n) promptUserName(); else renderUserChip();
 }
 var FIELD_LABELS={
-  estado:'Estado (UF) de prestação',ev_evento:'Evento',ev_estado:'Estado (UF) do evento',ev_local:'Local do evento',ev_funcao:'Função no evento',
+  estado:'Estado (UF) de prestação',pix_tipo:'Tipo da chave PIX',pix_msg_em:'Mensagem de confirmação do PIX',pix_conf_em:'PIX confirmado em',ev_evento:'Evento',ev_estado:'Estado (UF) do evento',ev_local:'Local do evento',ev_funcao:'Função no evento',
   ev_periodo_inicio:'Início do evento',ev_qtd_pessoas:'Qtd. de pessoas no evento',ev_equipe_obs:'Equipe / observação',ev_periodo_fim:'Fim do evento',ev_valor:'Cachê do evento',ev_novo:'Evento adicionado',ev_removido:'Evento removido',local:'Local de prestação',evento:'Evento',periodo_inicio:'Início do serviço',periodo_fim:'Fim do serviço',
   empresa:'Empresa',nome:'Nome',cpf:'CPF',rg:'RG',nascimento:'Data de nascimento',telefone:'Telefone',email:'E-mail',
   emergencia_nome:'Emergência (nome)',emergencia_parentesco:'Emergência (parentesco)',emergencia_telefone:'Emergência (telefone)',
@@ -3248,6 +3527,11 @@ function openCfg(){
   h+='<button class="btn ghost" onclick="atualizarAgora()">↻ Atualizar (puxar do banco)</button></div>';
 
   if(isMaster()){
+    h+='<div class="card" style="margin:14px 0;border-top:2px solid var(--grn)"><div class="section-title">🔗 Página de confirmação do PIX</div>'+
+       '<div class="muted" style="font-size:12px;margin-bottom:8px">Endereço onde está hospedado o arquivo <b>confirmar-pix.html</b>. Vale para todos os usuários.</div>'+
+       '<label class="fl">Endereço (https://...)<input id="cfgPixUrl" value="'+esc(pixConfUrl())+'" placeholder="https://seu-site.netlify.app/confirmar-pix.html"></label>'+
+       '<div class="flex" style="margin-top:8px"><button class="btn sm" onclick="salvarPixUrl()">💾 Salvar endereço</button>'+
+       (pixConfUrl()?'<a class="btn ghost sm" target="_blank" href="'+esc(pixConfUrl())+'">↗ Testar página</a>':'')+'</div></div>';
     h+='<div class="card" style="margin-top:16px;border-top:2px solid var(--amber)"><div class="section-title">⚙ Modo administrador</div>';
     h+='<div class="muted" style="font-size:11.5px;margin-bottom:10px">Cuidado: estas ações mexem na base inteira. <b>Não use "Enviar tudo" com o banco já populado</b> — isso duplica os registros.</div>';
     h+='<div class="flex"><button class="btn ghost sm" onclick="sbPull()">↓ Carregar do Supabase</button>';
@@ -3387,7 +3671,7 @@ var PERM_ACTS=[['ver','👁 Ver'],['criar','➕ Criar'],['editar','✏️ Editar
 /* campos considerados sensíveis (escondidos para quem não tem a chave) */
 var SENS_KEYS={
   colaboradores:['cpf','rg','salario','cache','passagem','diaria','banco','agencia','tipo_conta','num_conta','pix'],
-  freelancers:['cpf','valor','ev_valor']
+  freelancers:['cpf','valor','ev_valor','pix','pix_tipo']
 };
 var ACESSO_EV={
   entrada:['✅ Entrada','c-ok'], saida:['🚪 Saída','c-info'], pin_errado:['⚠ PIN errado','c-warn'],
@@ -3849,6 +4133,73 @@ function excluirUser(id){
   });
 }
 
+
+/* ================= ▾ SEÇÕES RECOLHÍVEIS (todas as abas e janelas) =================
+   Todo card com título de seção (.section-title) ganha uma seta ▾/▸.
+   Clique no título para recolher/expandir. A escolha fica salva neste computador. */
+var COLLAPSE=(function(){ try{ return JSON.parse(window.localStorage.getItem('dp_iled_collapse')||'{}'); }catch(e){ return {}; } })();
+function saveCollapse(){ try{ window.localStorage.setItem('dp_iled_collapse',JSON.stringify(COLLAPSE)); }catch(e){} }
+function colKey(title,inModal){
+  var t=(title.textContent||'').replace(/[▾▸]/g,'').replace(/\(\d+\)|\d+/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+  return (inModal?'m:':'v:')+TAB+':'+t;
+}
+function colSetCard(card,fechado){
+  card.classList.toggle('collapsed',!!fechado);
+  var a=card.querySelector('.col-head .col-arrow');
+  if(a) a.textContent=fechado?'▸':'▾';
+}
+function colToggle(card){
+  var fechado=!card.classList.contains('collapsed');
+  colSetCard(card,fechado);
+  var k=card.getAttribute('data-colkey2'); if(k){ if(fechado) COLLAPSE[k]=1; else delete COLLAPSE[k]; saveCollapse(); }
+}
+function colAll(root,fechar){
+  root.querySelectorAll('.card.col-ready').forEach(function(card){
+    colSetCard(card,fechar);
+    var k=card.getAttribute('data-colkey2'); if(k){ if(fechar) COLLAPSE[k]=1; else delete COLLAPSE[k]; }
+  });
+  saveCollapse();
+}
+function applyCollapsers(root,inModal){
+  if(!root) return;
+  var n=0;
+  root.querySelectorAll('.section-title').forEach(function(t){
+    var card=t.closest('.card'); if(!card||!root.contains(card)) return;
+    if(card.classList.contains('col-ready')){ n++; return; }
+    if(card.classList.contains('searchcard')||card.classList.contains('kpi')) return;
+    // sobe até o filho direto do card que contém o título (cabeçalho)
+    var head=t; while(head.parentElement&&head.parentElement!==card) head=head.parentElement;
+    if(head.parentElement!==card) return;
+    // só vale se houver conteúdo além do cabeçalho
+    if(!head.nextElementSibling) return;
+    card.classList.add('col-ready'); head.classList.add('col-head');
+    var ar=document.createElement('span'); ar.className='col-arrow'; ar.textContent='▾';
+    t.insertBefore(ar,t.firstChild);
+    t.classList.add('col-title'); t.title='Clique para recolher / expandir';
+    var k=colKey(t,inModal); card.setAttribute('data-colkey2',k);
+    t.addEventListener('click',function(e){ e.stopPropagation(); colToggle(card); });
+    if(COLLAPSE[k]) colSetCard(card,true);
+    n++;
+  });
+  // barra "Recolher tudo / Expandir tudo" nas janelas (fichas) com 2+ seções
+  if(inModal&&n>=2&&!root.querySelector('.col-bar')){
+    var xr=root.querySelector('.xrow');
+    if(xr){
+      var bar=document.createElement('div'); bar.className='col-bar';
+      bar.innerHTML='<button class="btn ghost sm" type="button">▸ Recolher tudo</button><button class="btn ghost sm" type="button">▾ Expandir tudo</button>';
+      bar.children[0].onclick=function(){ colAll(root,true); };
+      bar.children[1].onclick=function(){ colAll(root,false); };
+      xr.parentNode.insertBefore(bar,xr.nextSibling);
+    }
+  }
+}
+(function(){
+  var busy=false;
+  function run(){ if(busy) return; busy=true; try{ applyCollapsers(document.getElementById('view'),false); applyCollapsers(document.getElementById('modal'),true); }finally{ busy=false; } }
+  var mo=new MutationObserver(run);
+  ['view','modal'].forEach(function(id){ var el=document.getElementById(id); if(el) mo.observe(el,{childList:true,subtree:true}); });
+})();
+
 /* ================= BOOT (modo multiusuário) ================= */
 var ADMIN=false;
 loadCfg();
@@ -3871,6 +4222,7 @@ if(sbConfigured()){
 }
 sbTest(function(){});
 if(isMaster()) pullAcessos(function(){ if(TAB==='usuarios') render(); });
+loadDpConfig(); setTimeout(pixPoll,4000);
 }
 authBoot();
 </script>
