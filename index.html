@@ -261,6 +261,15 @@ canvas{max-width:100%}
 .perm-tbl input.pchk{width:18px;height:18px;accent-color:var(--grn);cursor:pointer}
 label.tgl{display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer}
 label.tgl input{width:18px;height:18px;margin-top:2px;accent-color:var(--grn)}
+
+.freel-filter{margin-bottom:12px;border-top:2px solid var(--violet)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.seg button{background:transparent;border:0;color:var(--mut);padding:9px 14px;font-weight:700;font-size:12.5px;cursor:pointer}
+.seg button.active{background:rgba(162,89,255,.25);color:#fff}
+.freel-card .ev-line{padding:5px 0;border-bottom:1px dashed var(--line)}
+.freel-card .ev-line:last-child{border-bottom:0}
+.freel-card .ev-val{color:var(--grn);font-weight:800}
+.ev-card{border-left:3px solid var(--violet)}
 </style>
 </head>
 <body>
@@ -465,7 +474,7 @@ var ALLOWED={
   ferias:['id','empresa','colaborador','inicio','fim','dias','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
   folha:['id','empresa','competencia','qtd','liquido','gratif','pensao','total','editando','atualizado_em'],
   custos:['id','empresa','competencia','descricao','valor','vencimento','financeiro','pasta','bloqueado','atualizado_em'],
-  freelancers:['id','nome','nascimento','cpf','telefone','endereco','mei','estado','local','evento','periodo_inicio','periodo_fim','valor','funcao','nr06','nr10','nr11','nr18','nr35','bloqueado','atualizado_em']
+  freelancers:['id','nome','nascimento','cpf','telefone','endereco','mei','estado','local','evento','periodo_inicio','periodo_fim','valor','funcao','eventos','nr06','nr10','nr11','nr18','nr35','bloqueado','atualizado_em']
 };
 function isISODate(v){ return /^\d{4}-\d{2}-\d{2}/.test(''+v); }
 function cleanRow(t,src){
@@ -1680,16 +1689,19 @@ function feriasPanel(){
   return h;
 }
 
-/* ================= FREELANCERS — BANCO DE DADOS (cards, agrupado por ESTADO de prestação) ================= */
+/* ================= FREELANCERS — BANCO DE DADOS com HISTÓRICO DE EVENTOS =================
+   Cada freelancer tem os dados pessoais + uma lista de EVENTOS trabalhados (f.eventos),
+   cada um com seu próprio estado (UF), local, função, período e cachê.
+   Filtro por Estado (UF) OU por Evento vale para os cards, o relatório, o PDF e a planilha. */
 var UF_LIST=[['AC','Acre'],['AL','Alagoas'],['AP','Amapá'],['AM','Amazonas'],['BA','Bahia'],['CE','Ceará'],['DF','Distrito Federal'],
   ['ES','Espírito Santo'],['GO','Goiás'],['MA','Maranhão'],['MT','Mato Grosso'],['MS','Mato Grosso do Sul'],['MG','Minas Gerais'],
   ['PA','Pará'],['PB','Paraíba'],['PR','Paraná'],['PE','Pernambuco'],['PI','Piauí'],['RJ','Rio de Janeiro'],['RN','Rio Grande do Norte'],
   ['RS','Rio Grande do Sul'],['RO','Rondônia'],['RR','Roraima'],['SC','Santa Catarina'],['SP','São Paulo'],['SE','Sergipe'],['TO','Tocantins']];
 function ufNome(uf){ for(var i=0;i<UF_LIST.length;i++){ if(UF_LIST[i][0]===uf) return UF_LIST[i][1]; } return uf||''; }
-/* NRs controladas no freelancer (sem ASO / contrato PJ) */
 var FREEL_NR_DEFS=NR_DEFS.filter(function(d){ return d.key.indexOf('nr')===0; });
-var FREEL_UF='';          // filtro de estado ('' = todos)
-var FREEL_SUB='dados';    // sub-aba do modal
+var FREEL_SUB='dados';                 // sub-aba do modal
+var FREEL_VIEW='cards';                // 'cards' | 'relatorio'
+var FREEL_FILTRO={modo:'uf',valor:'',de:'',ate:''};
 /* campos obrigatórios do freelancer — a ficha não fecha sem eles */
 var FREEL_REQ=[
   {key:'nome',label:'Nome completo'},{key:'cpf',label:'CPF'},{key:'telefone',label:'Telefone'},
@@ -1727,93 +1739,369 @@ function freelTemAlerta(f){
   return false;
 }
 function ufChip(uf){ return '<span class="uf-badge" title="'+esc(ufNome(uf))+'">'+(uf?esc(uf):'SEM UF')+'</span>'; }
-function freelPeriodo(f){
-  var i=f.periodo_inicio, e=f.periodo_fim;
+
+/* ---------- estrutura de eventos (com migração do formato antigo de 1 evento) ---------- */
+var EV_KEYS=['evento','estado','local','funcao','periodo_inicio','periodo_fim','valor'];
+function normFreel(f){
+  if(typeof f.eventos==='string'){ try{ f.eventos=JSON.parse(f.eventos); }catch(e){ f.eventos=[]; } }
+  if(!Array.isArray(f.eventos)) f.eventos=[];
+  if(!f.eventos.length && (f.evento||f.local||f.estado||f.valor||f.periodo_inicio||f.periodo_fim||f.funcao)){
+    var ev={id:uid()}; EV_KEYS.forEach(function(k){ ev[k]=f[k]===undefined?null:f[k]; });
+    f.eventos.push(ev);
+  }
+  // os campos antigos de evento "de nível superior" deixam de ser usados
+  EV_KEYS.forEach(function(k){ if(f[k]!==undefined) f[k]=null; });
+  return f;
+}
+function normFreelAll(){ (STORE.freelancers||[]).forEach(normFreel); }
+function evNum(v){ var n=parseFloat(v); return isNaN(n)?0:n; }
+function evDias(ev){
+  if(!ev.periodo_inicio||!ev.periodo_fim) return '';
+  var d=daysBetween((''+ev.periodo_inicio).slice(0,10),(''+ev.periodo_fim).slice(0,10));
+  return (d!==null&&d>=0)?(d+1):'';
+}
+function evPeriodo(ev){
+  var i=ev.periodo_inicio, e=ev.periodo_fim;
   if(!i&&!e) return '';
-  if(i&&e){ var d=daysBetween((''+i).slice(0,10),(''+e).slice(0,10)); return fmtD(i)+' → '+fmtD(e)+(d!==null&&d>=0?' ('+(d+1)+' dia'+(d>0?'s':'')+')':''); }
+  if(i&&e){ var d=evDias(ev); return fmtD(i)+' → '+fmtD(e)+(d?' ('+d+' dia'+(d>1?'s':'')+')':''); }
   return fmtD(i||e);
 }
+function evNome(ev){ return (''+(ev.evento||'')).trim(); }
+function evKey(ev){ return evNome(ev).toUpperCase(); }
+/* lista de eventos já usados (para o filtro e o autocompletar) */
+function eventosUsados(){
+  var m={}; (STORE.freelancers||[]).forEach(function(f){ (f.eventos||[]).forEach(function(ev){ var k=evKey(ev); if(k&&!m[k]) m[k]=evNome(ev); }); });
+  return Object.keys(m).sort().map(function(k){ return m[k]; });
+}
+function ufsUsados(){
+  var m={}; (STORE.freelancers||[]).forEach(function(f){ (f.eventos||[]).forEach(function(ev){ if(ev.estado) m[ev.estado]=1; }); });
+  return Object.keys(m).sort();
+}
+function locaisUsados(){
+  var m={}; (STORE.freelancers||[]).forEach(function(f){ (f.eventos||[]).forEach(function(ev){ var l=(''+(ev.local||'')).trim(); if(l) m[l.toUpperCase()]=l; }); });
+  return Object.keys(m).sort().map(function(k){ return m[k]; });
+}
+/* o evento passa no filtro atual (UF ou Evento + período)? */
+function evPassa(ev){
+  var F=FREEL_FILTRO;
+  if(F.valor){
+    if(F.modo==='uf' && (ev.estado||'')!==F.valor) return false;
+    if(F.modo==='evento' && evKey(ev)!==F.valor.toUpperCase()) return false;
+  }
+  var ini=(''+(ev.periodo_inicio||ev.periodo_fim||'')).slice(0,10);
+  if(F.de && (!ini||ini<F.de)) return false;
+  if(F.ate && (!ini||ini>F.ate)) return false;
+  return true;
+}
+function freelBusca(f,q){
+  if(!q) return true;
+  var txt=[f.nome,canSens()?f.cpf:'',f.mei,f.endereco,f.telefone];
+  (f.eventos||[]).forEach(function(ev){ txt.push(ev.evento,ev.local,ev.funcao,ev.estado,ufNome(ev.estado)); });
+  return txt.join(' ').toLowerCase().indexOf(q)>=0;
+}
+/* linhas do relatório: uma por participação (freelancer × evento) já filtradas */
+function freelLinhas(){
+  var q=((document.getElementById('freelSearch')||{}).value||FREEL_Q||'').toLowerCase();
+  var out=[];
+  (STORE.freelancers||[]).forEach(function(f){
+    if(!freelBusca(f,q)) return;
+    (f.eventos||[]).forEach(function(ev){ if(evPassa(ev)) out.push({f:f,ev:ev}); });
+  });
+  out.sort(function(a,b){
+    var g=FREEL_FILTRO.modo==='uf'?(a.ev.estado||'~').localeCompare(b.ev.estado||'~'):evKey(a.ev).localeCompare(evKey(b.ev));
+    if(g) return g;
+    var d=(''+(a.ev.periodo_inicio||'')).localeCompare(''+(b.ev.periodo_inicio||''));
+    return d||(a.f.nome||'').localeCompare(b.f.nome||'');
+  });
+  return out;
+}
+var FREEL_Q='';
+function freelFiltroDesc(){
+  var F=FREEL_FILTRO, p=[];
+  if(F.valor) p.push(F.modo==='uf'?'Estado: '+F.valor+' — '+ufNome(F.valor):'Evento: '+F.valor);
+  else p.push(F.modo==='uf'?'Todos os estados':'Todos os eventos');
+  if(F.de||F.ate) p.push('Período: '+(F.de?fmtD(F.de):'…')+' a '+(F.ate?fmtD(F.ate):'…'));
+  if(FREEL_Q) p.push('Busca: "'+FREEL_Q+'"');
+  return p.join(' · ');
+}
+
+/* ---------- TELA PRINCIPAL ---------- */
 function viewFreel(){
-  var rows=STORE.freelancers;
-  var porUF={}; rows.forEach(function(f){ var u=f.estado||''; porUF[u]=(porUF[u]||0)+1; });
-  var ufsUsados=Object.keys(porUF).filter(function(u){return u;}).sort();
+  normFreelAll();
+  var rows=STORE.freelancers, totEv=0, totVal=0;
+  rows.forEach(function(f){ (f.eventos||[]).forEach(function(ev){ totEv++; totVal+=evNum(ev.valor); }); });
+  var ufs=ufsUsados(), evs=eventosUsados();
+  if(FREEL_FILTRO.valor){
+    var lista=FREEL_FILTRO.modo==='uf'?ufs:evs.map(function(e){return e.toUpperCase();});
+    if(lista.indexOf(FREEL_FILTRO.modo==='uf'?FREEL_FILTRO.valor:FREEL_FILTRO.valor.toUpperCase())<0) FREEL_FILTRO.valor='';
+  }
   var alertas=rows.filter(freelTemAlerta).length;
   var h='<div class="kpis">';
   h+=kpi('Freelancers cadastrados',rows.length,'no banco de dados',true);
-  h+=kpi('Estados atendidos',ufsUsados.length,ufsUsados.join(' · ')||'nenhum ainda');
-  h+=kpi('Total de cachês',canSens()?money(sum(rows,'valor')):'🔒','somatório dos cadastros');
+  h+=kpi('Estados atendidos',ufs.length,ufs.join(' · ')||'nenhum ainda');
   h+=kpi('NRs em alerta',alertas,'vencidas ou < 30 dias');
   h+='</div>';
 
+  // barra de filtro: Estado (UF) OU Evento
+  var F=FREEL_FILTRO;
+  var ov='<option value="">'+(F.modo==='uf'?'Todos os estados':'Todos os eventos')+'</option>';
+  if(F.modo==='uf') ufs.forEach(function(u){ ov+='<option value="'+u+'"'+(F.valor===u?' selected':'')+'>'+u+' — '+esc(ufNome(u))+'</option>'; });
+  else evs.forEach(function(e){ ov+='<option value="'+esc(e)+'"'+(F.valor.toUpperCase()===e.toUpperCase()?' selected':'')+'>'+esc(e)+'</option>'; });
+  h+='<div class="card freel-filter">';
+  h+='<div class="section-title" style="margin-bottom:8px">🎯 Filtro do relatório</div>';
+  h+='<div class="flex" style="flex-wrap:wrap;align-items:flex-end;gap:10px">';
+  h+='<div class="seg"><button class="'+(F.modo==='uf'?'active':'')+'" onclick="setFreelModo(\'uf\')">🗺 Por Estado (UF)</button><button class="'+(F.modo==='evento'?'active':'')+'" onclick="setFreelModo(\'evento\')">🎤 Por Evento</button></div>';
+  h+='<label class="fl">'+(F.modo==='uf'?'Estado (UF) da prestação de serviço':'Evento de serviço prestado')+'<select id="freelValor" onchange="FREEL_FILTRO.valor=this.value;render()" style="min-width:240px">'+ov+'</select></label>';
+  h+='<button class="btn ghost sm" onclick="limparFreelFiltro()">✖ Limpar</button>';
+  h+='</div></div>';
+
   h+='<div class="toolbar">';
-  h+='<input id="freelSearch" placeholder="🔎 Buscar por nome, CPF, função, evento, local..." style="min-width:300px" oninput="renderFreelList()">';
+  h+='<input id="freelSearch" placeholder="🔎 Buscar por nome, CPF, função, evento, local..." style="min-width:300px" value="'+esc(FREEL_Q)+'" oninput="FREEL_Q=this.value;renderFreelList()">';
   h+='<button class="btn" onclick="newFreel()">+ Novo freelancer</button>';
-  h+='<div class="right flex"><button class="btn ghost sm" onclick="window.print()">🖨 PDF</button></div>';
+  h+='<div class="right flex"><button class="btn ghost sm" title="PDF com os eventos do filtro atual, agrupados e com subtotais" onclick="freelPDF()">📄 Baixar PDF</button>'+
+     '<button class="btn ghost sm" title="Planilha Excel (.xlsx) com o detalhe e o resumo do filtro atual" onclick="freelXLSX()">📊 Baixar planilha</button></div>';
   h+='</div>';
 
-  // filtro rápido por estado
-  h+='<div class="uf-chips"><button class="'+(!FREEL_UF?'active':'')+'" onclick="setFreelUF(\'\')">🗺 Todos ('+rows.length+')</button>';
-  ufsUsados.forEach(function(u){ h+='<button class="'+(FREEL_UF===u?'active':'')+'" title="'+esc(ufNome(u))+'" onclick="setFreelUF(\''+u+'\')">'+u+' ('+porUF[u]+')</button>'; });
-  if(porUF['']) h+='<button class="'+(FREEL_UF==='-'?'active':'')+'" onclick="setFreelUF(\'-\')">⚠ Sem estado ('+porUF['']+')</button>';
+  h+='<div class="subtabs">';
+  h+='<button class="'+(FREEL_VIEW==='cards'?'active':'')+'" onclick="FREEL_VIEW=\'cards\';render()">🗂 Banco de freelancers</button>';
+  h+='<button class="'+(FREEL_VIEW==='relatorio'?'active':'')+'" onclick="FREEL_VIEW=\'relatorio\';render()">📑 Relatório de eventos</button>';
   h+='</div>';
-
   h+='<div id="freelList"></div>';
   setTimeout(renderFreelList,0);
   return h;
 }
-function setFreelUF(u){ FREEL_UF=u; render(); }
+function setFreelModo(m){ FREEL_FILTRO.modo=m; FREEL_FILTRO.valor=''; render(); }
+function limparFreelFiltro(){ FREEL_FILTRO.valor=''; FREEL_FILTRO.de=''; FREEL_FILTRO.ate=''; FREEL_Q=''; render(); }
 function renderFreelList(){
   var el=document.getElementById('freelList'); if(!el) return;
-  var q=((document.getElementById('freelSearch')||{}).value||'').toLowerCase();
-  var list=STORE.freelancers.filter(function(f){
-    if(FREEL_UF==='-' && f.estado) return false;
-    if(FREEL_UF && FREEL_UF!=='-' && f.estado!==FREEL_UF) return false;
-    if(!q) return true;
-    return [f.nome,canSens()?f.cpf:'',f.mei,f.endereco,f.funcao,f.evento,f.local,f.telefone,f.estado,ufNome(f.estado)].join(' ').toLowerCase().indexOf(q)>=0;
+  if(FREEL_VIEW==='relatorio'){ el.innerHTML=freelRelatorioHTML(); return; }
+  var q=(FREEL_Q||'').toLowerCase(), F=FREEL_FILTRO, filtrando=!!(F.valor||F.de||F.ate);
+  var grupos={}, ordem=[];
+  function add(k,f,ev){ if(!grupos[k]){ grupos[k]={itens:{},n:0,tot:0}; ordem.push(k); } var g=grupos[k]; if(!g.itens[f.id]) g.itens[f.id]={f:f,evs:[]}; if(ev){ g.itens[f.id].evs.push(ev); g.n++; g.tot+=evNum(ev.valor); } }
+  STORE.freelancers.forEach(function(f){
+    if(!freelBusca(f,q)) return;
+    var evs=(f.eventos||[]).filter(evPassa);
+    if(!evs.length){ if(!filtrando) add('~sem',f,null); return; }
+    evs.forEach(function(ev){ add(F.modo==='uf'?(ev.estado||'~semuf'):(evKey(ev)||'~semev'),f,ev); });
   });
-  // agrupa por estado
-  var grupos={}; list.forEach(function(f){ var u=f.estado||''; (grupos[u]=grupos[u]||[]).push(f); });
-  var chaves=Object.keys(grupos).sort(function(a,b){ if(!a)return 1; if(!b)return -1; return a.localeCompare(b); });
+  ordem.sort(function(a,b){ return a.localeCompare(b); });
   var h='';
-  chaves.forEach(function(u){
-    var g=grupos[u].sort(function(a,b){return (a.nome||'').localeCompare(b.nome||'');});
-    var tot=sum(g,'valor');
-    h+='<div class="uf-group">'+ufChip(u)+'<span class="uf-big">'+(u?esc(ufNome(u)):'Sem estado definido')+'</span>'+
-       '<span class="muted" style="font-size:12px">'+g.length+' freelancer'+(g.length>1?'s':'')+(tot&&canSens()?' · '+money(tot):'')+'</span><span class="uf-line"></span></div>';
+  ordem.forEach(function(k){
+    var g=grupos[k], itens=Object.keys(g.itens).map(function(id){return g.itens[id];}).sort(function(a,b){return (a.f.nome||'').localeCompare(b.f.nome||'');});
+    var titulo, chip;
+    if(k==='~sem'){ titulo='Sem evento registrado'; chip='<span class="uf-badge">—</span>'; }
+    else if(F.modo==='uf'){ var uf=k==='~semuf'?'':k; titulo=uf?esc(ufNome(uf)):'Sem estado definido'; chip=ufChip(uf); }
+    else { var nomeEv=k==='~semev'?'':evNome(itens[0].evs[0]); titulo=nomeEv?esc(nomeEv):'Evento sem nome'; chip='<span class="uf-badge">🎤</span>'; }
+    h+='<div class="uf-group">'+chip+'<span class="uf-big">'+titulo+'</span>'+
+       '<span class="muted" style="font-size:12px">'+itens.length+' freelancer'+(itens.length>1?'s':'')+(g.n?' · '+g.n+' participaç'+(g.n>1?'ões':'ão'):'')+(g.tot&&canSens()?' · '+money(g.tot):'')+'</span><span class="uf-line"></span></div>';
     h+='<div class="empgrid">';
-    g.forEach(function(f){
-      var alert=freelTemAlerta(f);
+    itens.forEach(function(it){
+      var f=it.f, alert=freelTemAlerta(f), tot=0;
+      it.evs.forEach(function(ev){ tot+=evNum(ev.valor); });
+      var totalEvs=(f.eventos||[]).length;
       h+='<div class="card searchcard freel-card" onclick="openFreel(\''+f.id+'\')">';
       h+='<div class="flex" style="justify-content:space-between;align-items:center;gap:8px">'+
          '<span style="width:28px;height:28px;border-radius:50%;background:var(--panelh);display:flex;align-items:center;justify-content:center;flex:none;font-size:13px">🧑‍💼</span>'+
          '<span class="nm" style="flex:1">'+esc(f.nome||'(sem nome)')+'</span>'+(alert?'<span class="chip c-warn">⚠ NR</span>':'')+'</div>';
-      h+='<div class="fn">'+esc(f.funcao||'—')+(f.mei?' <span class="muted" style="font-size:11px">· MEI '+esc(f.mei)+'</span>':'')+'</div>';
-      if(f.evento||f.local){
-        h+='<div class="ev">'+(f.evento?'🎤 <b>'+esc(f.evento)+'</b>':'')+(f.evento&&f.local?'<br>':'')+(f.local?'📍 '+esc(f.local):'')+'</div>';
+      h+='<div class="fn">'+(f.mei?'MEI '+esc(f.mei):'<span class="muted">sem MEI</span>')+' <span class="muted" style="font-size:11px">· '+totalEvs+' evento'+(totalEvs!==1?'s':'')+' no histórico</span></div>';
+      if(it.evs.length){
+        h+='<div class="ev">';
+        it.evs.slice(0,3).forEach(function(ev){
+          h+='<div class="ev-line">'+(ev.estado?ufChip(ev.estado)+' ':'')+'🎤 <b>'+esc(evNome(ev)||'(sem nome)')+'</b>'+(ev.funcao?' · '+esc(ev.funcao):'')+
+             '<br><span class="muted">'+esc(evPeriodo(ev)||'sem período')+(ev.local?' · 📍 '+esc(ev.local):'')+'</span>'+
+             (ev.valor?(canSens()?' <span class="ev-val">'+money(ev.valor)+'</span>':' <span class="sens-inline">🔒</span>'):'')+'</div>';
+        });
+        if(it.evs.length>3) h+='<div class="muted" style="font-size:11px">+ '+(it.evs.length-3)+' outro(s)…</div>';
+        h+='</div>';
+        if(it.evs.length>1&&canSens()) h+='<div class="flex" style="margin-top:6px"><span class="cache">Total: '+money(tot)+'</span></div>';
+      } else {
+        h+='<div class="ev muted">Nenhum evento registrado ainda.</div>';
       }
-      h+='<div style="margin-top:8px;align-items:center" class="flex">'+ufChip(f.estado)+
-         '<span class="muted" style="font-size:11px">'+esc(freelPeriodo(f))+'</span>'+
-         (f.valor?(canSens()?'<span class="cache">'+money(f.valor)+'</span>':'<span class="cache sens-inline">🔒 cachê</span>'):'')+'</div>';
       h+='</div>';
     });
     h+='</div>';
   });
-  if(!list.length) h='<div class="muted" style="padding:20px">Nenhum freelancer encontrado. Clique em <b>+ Novo freelancer</b> para cadastrar.</div>';
+  if(!ordem.length) h='<div class="muted" style="padding:20px">Nenhum freelancer encontrado'+(filtrando||q?' com esse filtro.':'. Clique em <b>+ Novo freelancer</b> para cadastrar.')+'</div>';
   el.innerHTML=h;
 }
+
+/* ---------- RELATÓRIO (tela) ---------- */
+function freelGrupos(linhas){
+  var g={}, ordem=[];
+  linhas.forEach(function(l){
+    var k=FREEL_FILTRO.modo==='uf'?(l.ev.estado||''):(evNome(l.ev)||'');
+    var kk=k.toUpperCase();
+    if(!g[kk]){ g[kk]={nome:k,linhas:[],tot:0,pessoas:{}}; ordem.push(kk); }
+    g[kk].linhas.push(l); g[kk].tot+=evNum(l.ev.valor); g[kk].pessoas[l.f.id]=1;
+  });
+  return ordem.map(function(k){ return g[k]; });
+}
+function freelGrupoTitulo(g){
+  if(FREEL_FILTRO.modo==='uf') return g.nome?g.nome+' — '+ufNome(g.nome):'Sem estado definido';
+  return g.nome||'Evento sem nome';
+}
+function freelRelatorioHTML(){
+  var linhas=freelLinhas(), sens=canSens();
+  if(!linhas.length) return '<div class="card muted" style="padding:16px">Nenhum evento encontrado com o filtro atual.</div>';
+  var tot=0, pessoas={}; linhas.forEach(function(l){ tot+=evNum(l.ev.valor); pessoas[l.f.id]=1; });
+  var h='<div class="card" style="margin-bottom:12px"><div class="flex" style="gap:10px;flex-wrap:wrap;align-items:center">'+
+    '<span class="chip c-info">🎯 '+esc(freelFiltroDesc())+'</span>'+
+    '<span class="chip c-ok">👥 '+Object.keys(pessoas).length+' pessoa(s)</span>'+
+    '<span class="chip c-ok">🎤 '+linhas.length+' participação(ões)</span>'+
+    (sens?'<span class="chip c-warn">💰 '+money(tot)+'</span>':'<span class="chip c-mut">🔒 valores restritos</span>')+'</div></div>';
+  freelGrupos(linhas).forEach(function(g){
+    h+='<div class="card" style="margin-bottom:12px"><div class="xrow"><div class="section-title">'+(FREEL_FILTRO.modo==='uf'?ufChip(g.nome)+' ':'🎤 ')+esc(freelGrupoTitulo(g))+'</div>'+
+       '<span class="muted" style="font-size:12px">'+Object.keys(g.pessoas).length+' pessoa(s) · '+g.linhas.length+' participação(ões)'+(sens?' · <b style="color:var(--grn)">'+money(g.tot)+'</b>':'')+'</span></div>';
+    h+='<div class="tablewrap"><table><thead><tr><th>Freelancer</th>'+(sens?'<th>CPF</th>':'')+'<th>Telefone</th><th>Função</th>'+
+       (FREEL_FILTRO.modo==='uf'?'<th>Evento</th>':'<th>UF</th>')+'<th>Local</th><th>Período</th><th>Dias</th>'+(sens?'<th style="text-align:right">Cachê</th>':'')+'</tr></thead><tbody>';
+    g.linhas.forEach(function(l){
+      h+='<tr style="cursor:pointer" onclick="openFreel(\''+l.f.id+'\')"><td><b>'+esc(l.f.nome||'—')+'</b></td>'+(sens?'<td>'+esc(l.f.cpf||'—')+'</td>':'')+
+         '<td>'+esc(l.f.telefone||'—')+'</td><td>'+esc(l.ev.funcao||'—')+'</td>'+
+         (FREEL_FILTRO.modo==='uf'?'<td>'+esc(evNome(l.ev)||'—')+'</td>':'<td>'+ufChip(l.ev.estado)+'</td>')+
+         '<td>'+esc(l.ev.local||'—')+'</td><td style="white-space:nowrap">'+esc(evPeriodo(l.ev).replace(/ \(.*\)$/,'')||'—')+'</td><td>'+evDias(l.ev)+'</td>'+
+         (sens?'<td style="text-align:right;white-space:nowrap">'+(l.ev.valor?money(l.ev.valor):'—')+'</td>':'')+'</tr>';
+    });
+    h+='</tbody></table></div></div>';
+  });
+  return h;
+}
+
+/* ---------- EXPORTAÇÃO: PDF ---------- */
+function freelPDF(){
+  normFreelAll();
+  var linhas=freelLinhas(), sens=canSens(), porUF=FREEL_FILTRO.modo==='uf', F=FREEL_FILTRO;
+  var tot=0, pessoas={}; linhas.forEach(function(l){ tot+=evNum(l.ev.valor); pessoas[l.f.id]=1; });
+  var grupos=freelGrupos(linhas);
+  var titulo=F.valor?(porUF?ufNome(F.valor)+' ('+F.valor+')':F.valor):(porUF?'Todos os estados':'Todos os eventos');
+  var nP=Object.keys(pessoas).length;
+  var h='<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de Freelancers - '+esc(titulo)+'</title><style>'+
+    '@page{size:A4;margin:0}'+
+    '*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+    'body{margin:0;font-family:Helvetica,Arial,sans-serif;color:#1b1c21;font-size:11px}'+
+    '.hd{background:#1b1c21;color:#fff;padding:22px 34px 18px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:4px solid #e10600}'+
+    '.hd h1{margin:0;font-size:21px;font-weight:bold} .hd .s{color:#b9bcc6;font-size:11px;margin-top:4px}'+
+    '.hd .r{text-align:right;color:#b9bcc6;font-size:10.5px;line-height:1.7}'+
+    '.wrap{padding:22px 34px 10px}'+
+    '.nm{font-size:17px;font-weight:bold;text-transform:uppercase;margin:0} .nm2{color:#666;font-size:10.5px;text-transform:uppercase;margin-top:3px}'+
+    '.lbl{color:#8a8d96;font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.3px;margin-top:14px}'+
+    '.val{font-size:11.5px;margin-top:2px;text-transform:uppercase}'+
+    '.box{border:1.5px solid #e10600;border-radius:9px;padding:14px 16px;margin:18px 0 20px}'+
+    '.box .row{display:flex;justify-content:space-between;align-items:flex-start}'+
+    '.box .k{color:#666;font-size:10px} .box .big{font-size:18px;font-weight:bold;margin-top:2px} .box .red{color:#e10600;font-size:22px;font-weight:bold;margin-top:2px}'+
+    '.box .ft{border-top:1px solid #e3e3e3;margin-top:12px;padding-top:9px;color:#444;font-size:10px;line-height:1.6}'+
+    'h2{font-size:12.5px;margin:18px 0 7px;display:flex;justify-content:space-between;align-items:baseline}'+
+    'h2 small{font-weight:normal;color:#666;font-size:10px}'+
+    'table{border-collapse:collapse;width:100%;margin-bottom:6px}'+
+    'th{background:#1b1c21;color:#fff;font-size:9.5px;text-align:left;padding:7px 8px;font-weight:bold}'+
+    'td{padding:6px 8px;font-size:10px;border-bottom:1px solid #eee} tbody tr:nth-child(even) td{background:#f6f6f7}'+
+    'td.r,th.r{text-align:right;white-space:nowrap}'+
+    'tr.sub td{background:#fdecec!important;font-weight:bold;border-bottom:0}'+
+    '.tot{display:flex;justify-content:space-between;align-items:center;border:1.5px solid #e10600;border-radius:9px;padding:11px 16px;margin-top:18px;font-weight:bold;font-size:12px}'+
+    '.tot b{color:#e10600;font-size:17px}'+
+    '.note{margin-top:14px;color:#777;font-size:9.5px;line-height:1.5}'+
+    '.foot{text-align:center;color:#a0a3ab;font-size:9px;padding:18px 34px 22px}'+
+    'h2,tr,.box,.tot{break-inside:avoid}'+
+    '</style></head><body>';
+  h+='<div class="hd"><div><h1>Relatório de Freelancers</h1><div class="s">ILED Produções · Departamento Pessoal</div></div>'+
+     '<div class="r">Emitido em '+fmtD(today())+'<br>'+(porUF?'Por Estado (UF) da prestação':'Por Evento de serviço prestado')+'</div></div>';
+  h+='<div class="wrap">';
+  h+='<div class="nm">'+esc(titulo)+'</div><div class="nm2">'+(porUF?'Estado (UF) da prestação de serviço':'Evento de serviço prestado')+(FREEL_Q?' · busca: '+esc(FREEL_Q):'')+'</div>';
+  h+='<div class="lbl">Gerado por</div><div class="val">'+esc(getUserName())+' · '+fmtDateTime(new Date().toISOString())+'</div>';
+  h+='<div class="lbl">Agrupamento</div><div class="val">'+grupos.length+' '+(porUF?'estado(s)':'evento(s)')+'</div>';
+  h+='<div class="box"><div class="row"><div><div class="k">Freelancers no relatório</div><div class="big">'+nP+' pessoa'+(nP!==1?'s':'')+'</div></div>'+
+     (sens?'<div style="text-align:right"><div class="k">Total de cachês</div><div class="red">'+money(tot)+'</div></div>':'')+'</div>'+
+     '<div class="ft">'+linhas.length+' participação(ões) em '+grupos.length+' '+(porUF?'estado(s)':'evento(s)')+'.'+(sens?'':' CPF e valores omitidos — usuário sem permissão para dados sensíveis.')+'</div></div>';
+  if(!linhas.length) h+='<p>Nenhum evento encontrado com o filtro atual.</p>';
+  var ncol=5+(sens?2:0);
+  grupos.forEach(function(g){
+    h+='<h2>'+esc(freelGrupoTitulo(g))+'<small>'+Object.keys(g.pessoas).length+' pessoa(s)'+(sens?' · '+money(g.tot):'')+'</small></h2>';
+    h+='<table><thead><tr><th>#</th><th>Freelancer</th>'+(sens?'<th>CPF</th>':'')+'<th>Telefone</th><th>MEI</th><th>Função</th>'+(porUF?'<th>Evento</th>':'<th>UF</th>')+(sens?'<th class="r">Cachê</th>':'')+'</tr></thead><tbody>';
+    g.linhas.forEach(function(l,i){
+      h+='<tr><td>'+(i+1)+'</td><td><b>'+esc(l.f.nome||'—')+'</b></td>'+(sens?'<td>'+esc(l.f.cpf||'—')+'</td>':'')+'<td>'+esc(l.f.telefone||'—')+'</td><td>'+esc(l.f.mei||'—')+'</td>'+
+         '<td>'+esc(l.ev.funcao||'—')+'</td>'+(porUF?'<td>'+esc(evNome(l.ev)||'—')+'</td>':'<td>'+esc(l.ev.estado||'—')+'</td>')+(sens?'<td class="r">'+(l.ev.valor?money(l.ev.valor):'—')+'</td>':'')+'</tr>';
+    });
+    if(sens) h+='<tr class="sub"><td colspan="'+(ncol)+'">Subtotal — '+esc(freelGrupoTitulo(g))+'</td><td class="r">'+money(g.tot)+'</td></tr>';
+    h+='</tbody></table>';
+  });
+  if(linhas.length&&sens) h+='<div class="tot">TOTAL GERAL DE CACHÊS<b>'+money(tot)+'</b></div>';
+  h+='<div class="note">Documento interno. Contém dados pessoais protegidos pela LGPD — não compartilhe fora das áreas autorizadas.</div>';
+  h+='</div><div class="foot">Documento gerado automaticamente pelo Painel DP · ILED Produções</div>';
+  h+='</body></html>';
+  var win=window.open('','_blank');
+  if(!win){ alert('Seu navegador bloqueou a nova aba — permita pop-ups para este arquivo e tente de novo.'); return; }
+  win.document.open(); win.document.write(h); win.document.close();
+  setTimeout(function(){ try{ win.focus(); win.print(); }catch(e){} },350);
+}
+
+/* ---------- EXPORTAÇÃO: PLANILHA EXCEL (.xlsx, com CSV de reserva) ---------- */
+function freelNomeArquivo(ext){
+  var F=FREEL_FILTRO, base='freelancers_'+(F.valor?(F.modo==='uf'?'UF-'+F.valor:'evento-'+F.valor):(F.modo==='uf'?'todos-estados':'todos-eventos'));
+  base=base.normalize?base.normalize('NFD').replace(/[\u0300-\u036f]/g,''):base;
+  return base.replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,70)+'_'+today()+'.'+ext;
+}
+function freelPlanilhaDados(){
+  normFreelAll();
+  var linhas=freelLinhas(), sens=canSens();
+  var cab=['Freelancer'].concat(sens?['CPF']:[]).concat(['Data de nascimento','Telefone','MEI (CNPJ)','Endereço','Estado (UF)','Evento','Função']).concat(sens?['Cachê (R$)']:[]);
+  var det=[['Relatório de Freelancers — DP ILED'],['Filtro: '+freelFiltroDesc()],['Gerado em '+fmtDateTime(new Date().toISOString())+' por '+getUserName()],[],cab];
+  linhas.forEach(function(l){
+    var r=[l.f.nome||''];
+    if(sens) r.push(l.f.cpf||'');
+    r=r.concat([fmtD(l.f.nascimento),l.f.telefone||'',l.f.mei||'',l.f.endereco||'',l.ev.estado||'',evNome(l.ev),l.ev.funcao||'']);
+    if(sens) r.push(evNum(l.ev.valor)||'');
+    det.push(r);
+  });
+  var tot=0; linhas.forEach(function(l){ tot+=evNum(l.ev.valor); });
+  if(sens&&linhas.length){ var t=new Array(cab.length-1).fill(''); t[0]='TOTAL GERAL'; det.push([]); det.push(t.concat([tot])); }
+  var res=[['Resumo — '+(FREEL_FILTRO.modo==='uf'?'por Estado (UF)':'por Evento')],['Filtro: '+freelFiltroDesc()],[],
+    [FREEL_FILTRO.modo==='uf'?'Estado (UF)':'Evento','Pessoas','Participações'].concat(sens?['Total de cachês (R$)']:[])];
+  freelGrupos(linhas).forEach(function(g){ res.push([freelGrupoTitulo(g),Object.keys(g.pessoas).length,g.linhas.length].concat(sens?[g.tot]:[])); });
+  return {det:det,res:res,cab:cab,sens:sens};
+}
+function freelXLSX(){
+  var d=freelPlanilhaDados();
+  function gerar(){
+    try{
+      var wb=XLSX.utils.book_new();
+      var ws=XLSX.utils.aoa_to_sheet(d.det);
+      ws['!cols']=d.cab.map(function(c){ return {wch:Math.max(12,Math.min(38,c.length+6))}; });
+      ws['!cols'][0]={wch:36};
+      XLSX.utils.book_append_sheet(wb,ws,'Detalhe');
+      var ws2=XLSX.utils.aoa_to_sheet(d.res); ws2['!cols']=[{wch:40},{wch:10},{wch:14},{wch:20}];
+      XLSX.utils.book_append_sheet(wb,ws2,'Resumo');
+      XLSX.writeFile(wb,freelNomeArquivo('xlsx'));
+    }catch(e){ console.warn(e); freelCSV(d); }
+  }
+  if(window.XLSX) return gerar();
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  s.onload=gerar;
+  s.onerror=function(){ showWarn('Sem acesso à biblioteca do Excel — baixando em CSV (abre no Excel também).'); freelCSV(d); };
+  document.head.appendChild(s);
+}
+function freelCSV(d){
+  d=d||freelPlanilhaDados();
+  var csv=d.det.map(function(r){ return r.map(function(c){ var v=(typeof c==='number')?(''+c).replace('.',','):(''+(c===undefined||c===null?'':c)); return '"'+v.replace(/"/g,'""')+'"'; }).join(';'); }).join('\r\n');
+  var blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=freelNomeArquivo('csv'); document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ---------- CADASTRO / FICHA ---------- */
 function newFreel(){
   if(!can('freelancers','criar')){ permDenied('freelancers','criar'); return; }
-  var f={id:uid(),nome:'',estado:(FREEL_UF&&FREEL_UF!=='-')?FREEL_UF:''};
+  var f={id:uid(),nome:'',eventos:[]};
+  var F=FREEL_FILTRO;
+  if(F.valor){ var ev={id:uid()}; if(F.modo==='uf') ev.estado=F.valor; else ev.evento=F.valor; f.eventos.push(ev); }
   SESSION_NEW[f.id]=true; STORE.freelancers.push(f); persist('freelancers',f); openFreel(f.id);
 }
 function openFreel(id){
   var f=find('freelancers',id); if(!f) return;
+  normFreel(f);
   FREEL_SUB='dados';
   document.getElementById('modal').innerHTML=freelModal(f);
   document.getElementById('overlay').className='overlay show';
 }
 function freelSub(s){ FREEL_SUB=s; var f=find('freelancers',window._curFreel); if(f) document.getElementById('modal').innerHTML=freelModal(f); }
-/* campo de formulário do freelancer (mesmo visual do colaborador) */
 function ffld(f,key,label,type){
   type=type||'text';
   if(sensHidden('freelancers',key,f.id)) return sensBox(label);
@@ -1823,30 +2111,75 @@ function ffld(f,key,label,type){
     var code="upd('freelancers','"+f.id+"','"+key+"',value)";
     return '<label class="'+cls+'">'+esc(label)+mk+dateTrio('',raw,code,false,isReq)+'</label>';
   }
-  if(type==='money'){
-    var codeM="upd('freelancers','"+f.id+"','"+key+"',moneyUnmask(this.value))";
-    return '<label class="'+cls+'">'+esc(label)+mk+moneyField(raw,codeM)+'</label>';
-  }
   return '<label class="'+cls+'">'+esc(label)+mk+'<input type="text" value="'+esc(raw)+'" onchange="upd(\'freelancers\',\''+f.id+'\',\''+key+'\',this.value)"></label>';
 }
-function ffldUF(f){
-  var o='<option value="">— selecione —</option>';
-  UF_LIST.forEach(function(u){ o+='<option value="'+u[0]+'"'+(f.estado===u[0]?' selected':'')+'>'+u[0]+' — '+u[1]+'</option>'; });
-  return '<label class="fl">Estado (UF) da prestação de serviço<select onchange="upd(\'freelancers\',\''+f.id+'\',\'estado\',this.value)">'+o+'</select></label>';
+/* campos de um evento */
+function evFld(f,ev,key,label,type){
+  var raw=(ev[key]===null||ev[key]===undefined?'':ev[key]);
+  var call="updEv('"+f.id+"','"+ev.id+"','"+key+"',";
+  if(type==='date') return '<label class="fl">'+esc(label)+dateTrio('',raw,call+"value)")+'</label>';
+  if(type==='money'){
+    if(sensHidden('freelancers','valor',f.id)) return sensBox(label);
+    return '<label class="fl">'+esc(label)+moneyField(raw,call+"moneyUnmask(this.value))")+'</label>';
+  }
+  if(type==='uf'){
+    var o='<option value="">— selecione —</option>';
+    UF_LIST.forEach(function(u){ o+='<option value="'+u[0]+'"'+(raw===u[0]?' selected':'')+'>'+u[0]+' — '+u[1]+'</option>'; });
+    return '<label class="fl">'+esc(label)+'<select onchange="'+call+'this.value)">'+o+'</select></label>';
+  }
+  return '<label class="fl">'+esc(label)+'<input type="text" value="'+esc(raw)+'"'+(type?' list="'+type+'"':'')+' onchange="'+call+'this.value)"></label>';
+}
+function updEv(fid,evid,key,val){
+  var f=find('freelancers',fid); if(!f) return;
+  if(!canEditRec('freelancers',fid)){ permDenied('freelancers','editar'); return; }
+  var ev=null; (f.eventos||[]).forEach(function(x){ if(x.id===evid) ev=x; }); if(!ev) return;
+  if(key==='valor'){ var n=parseFloat(val); val=isNaN(n)?null:Math.round(n*100)/100; }
+  if(key==='evento'||key==='local'||key==='funcao') val=(''+(val||'')).trim();
+  var old=ev[key]; ev[key]=val;
+  logEdit('freelancers',{id:f.id,nome:(f.nome||'(sem nome)')+' — '+(evNome(ev)||'evento')},'ev_'+key,old,val);
+  saveLocal(); persist('freelancers',f);
+  if(document.getElementById('overlay').className.indexOf('show')>=0&&window._curFreel===fid) document.getElementById('modal').innerHTML=freelModal(f);
+}
+function addEv(fid){
+  var f=find('freelancers',fid); if(!f) return;
+  if(!canEditRec('freelancers',fid)){ permDenied('freelancers','editar'); return; }
+  normFreel(f);
+  var ev={id:uid()}, F=FREEL_FILTRO;
+  if(F.valor){ if(F.modo==='uf') ev.estado=F.valor; else ev.evento=F.valor; }
+  f.eventos.unshift(ev);
+  logEdit('freelancers',{id:f.id,nome:f.nome||'(sem nome)'},'ev_novo','','novo evento');
+  saveLocal(); persist('freelancers',f);
+  FREEL_SUB='eventos'; document.getElementById('modal').innerHTML=freelModal(f);
+}
+function delEv(fid,evid){
+  var f=find('freelancers',fid); if(!f) return;
+  if(!canEditRec('freelancers',fid)){ permDenied('freelancers','editar'); return; }
+  var ev=null; (f.eventos||[]).forEach(function(x){ if(x.id===evid) ev=x; }); if(!ev) return;
+  if(!confirm('Remover o evento "'+(evNome(ev)||'sem nome')+'" do histórico de '+(f.nome||'este freelancer')+'?')) return;
+  f.eventos=f.eventos.filter(function(x){ return x.id!==evid; });
+  logEdit('freelancers',{id:f.id,nome:f.nome||'(sem nome)'},'ev_removido',evNome(ev)+(ev.periodo_inicio?' ('+fmtD(ev.periodo_inicio)+')':''),'removido');
+  saveLocal(); persist('freelancers',f);
+  document.getElementById('modal').innerHTML=freelModal(f);
 }
 function freelModal(f){
   window._curFreel=f.id;
+  normFreel(f);
   var _miss=freelMissing(f);
   FREEL_MISS_MAP={}; _miss.forEach(function(m){ FREEL_MISS_MAP[m.key]=true; });
+  var evs=f.eventos||[], ufsF={}; evs.forEach(function(ev){ if(ev.estado) ufsF[ev.estado]=1; });
+  var totF=0; evs.forEach(function(ev){ totF+=evNum(ev.valor); });
   var h='<div class="xrow"><h2>'+esc(f.nome||'Novo freelancer')+'</h2><button class="close" onclick="closeOv()">×</button></div>';
-  h+='<div class="flex" style="margin-bottom:10px;align-items:center;gap:10px">'+ufChip(f.estado)+'<span class="muted">'+esc(f.estado?ufNome(f.estado):'Defina o estado de prestação')+(f.funcao?' · '+esc(f.funcao):'')+'</span></div>';
+  h+='<div class="flex" style="margin-bottom:10px;align-items:center;gap:8px;flex-wrap:wrap">'+
+     (Object.keys(ufsF).length?Object.keys(ufsF).sort().map(ufChip).join(' '):'<span class="uf-badge">SEM UF</span>')+
+     '<span class="muted">'+evs.length+' evento'+(evs.length!==1?'s':'')+' no histórico'+(canSens()&&totF?' · total '+money(totF):'')+'</span></div>';
   if(_miss.length){
     h+='<div class="colab-missing-banner">🚫 <b>Esta ficha não fecha enquanto faltarem dados obrigatórios:</b> '+
        _miss.map(function(m){return esc(m.label);}).join(', ')+'. Preencha as caixas destacadas em vermelho.</div>';
   }
   h+='<div class="subtabs">';
-  h+='<button class="'+(FREEL_SUB==='dados'?'active':'')+'" onclick="freelSub(\'dados\')">Dados do Freelancer'+(_miss.length?' 🚫':'')+'</button>';
-  h+='<button class="'+(FREEL_SUB==='nrs'?'active':'')+'" onclick="freelSub(\'nrs\')">Controle de NRs'+(freelTemAlerta(f)?' ⚠':'')+'</button>';
+  h+='<button class="'+(FREEL_SUB==='dados'?'active':'')+'" onclick="freelSub(\'dados\')">👤 Dados do Freelancer'+(_miss.length?' 🚫':'')+'</button>';
+  h+='<button class="'+(FREEL_SUB==='eventos'?'active':'')+'" onclick="freelSub(\'eventos\')">🎤 Eventos trabalhados ('+evs.length+')</button>';
+  h+='<button class="'+(FREEL_SUB==='nrs'?'active':'')+'" onclick="freelSub(\'nrs\')">🦺 Controle de NRs'+(freelTemAlerta(f)?' ⚠':'')+'</button>';
   h+='</div>';
   if(FREEL_SUB==='dados'){
     h+='<div class="card" style="margin-bottom:14px"><div class="section-title">👤 Identificação</div><div class="formgrid">';
@@ -1859,19 +2192,30 @@ function freelModal(f){
     h+='<div class="card" style="margin-bottom:14px"><div class="section-title">🏠 Endereço</div><div class="formgrid">';
     h+='<label class="fl" style="grid-column:1/-1">Endereço completo<input type="text" value="'+esc(f.endereco||'')+'" placeholder="Rua, nº, bairro, cidade/UF, CEP" onchange="upd(\'freelancers\',\''+f.id+'\',\'endereco\',this.value)"></label>';
     h+='</div></div>';
-    h+='<div class="card" style="margin-bottom:14px;border-top:2px solid var(--violet)"><div class="section-title">🗺 Prestação de serviço</div><div class="formgrid">';
-    h+=ffldUF(f);
-    h+=ffld(f,'local','Local de prestação de serviço');
-    h+=ffld(f,'evento','Evento de serviço prestado');
-    h+=ffld(f,'funcao','Função de contratação');
-    h+='</div></div>';
-    h+='<div class="card"><div class="section-title">📅 Período e cachê</div><div class="formgrid">';
-    h+=ffld(f,'periodo_inicio','Início do serviço','date');
-    h+=ffld(f,'periodo_fim','Fim do serviço','date');
-    h+=ffld(f,'valor','Valor de cachê (R$)','money');
-    h+='</div>';
-    var per=freelPeriodo(f); if(per) h+='<div class="chip c-info" style="margin-top:10px">🗓 '+esc(per)+'</div>';
-    h+='</div>';
+    h+='<div class="card" style="border-top:2px solid var(--violet)"><div class="xrow"><div class="section-title">🎤 Eventos trabalhados</div>'+
+       '<button class="btn ghost sm" onclick="freelSub(\'eventos\')">Abrir histórico →</button></div>'+
+       '<div class="muted" style="font-size:12px">'+(evs.length?evs.length+' evento(s) registrado(s). Cada evento tem seu próprio estado, local, função, período e cachê.':'Nenhum evento ainda. Registre cada contratação na aba <b>🎤 Eventos trabalhados</b>.')+'</div></div>';
+  } else if(FREEL_SUB==='eventos'){
+    // listas para autocompletar (padroniza o nome dos eventos → o filtro funciona certinho)
+    h+='<datalist id="dlEventos">'+eventosUsados().map(function(e){return '<option value="'+esc(e)+'">';}).join('')+'</datalist>';
+    h+='<datalist id="dlLocais">'+locaisUsados().map(function(e){return '<option value="'+esc(e)+'">';}).join('')+'</datalist>';
+    h+='<div class="flex" style="margin-bottom:12px;align-items:center"><button class="btn" onclick="addEv(\''+f.id+'\')">+ Adicionar evento</button>'+
+       '<span class="muted" style="font-size:12px">💡 Escolha o nome do evento na lista sugerida para ele cair certinho no filtro e no relatório.</span></div>';
+    if(!evs.length) h+='<div class="card muted">Nenhum evento registrado. Clique em <b>+ Adicionar evento</b>.</div>';
+    var ord=evs.slice().sort(function(a,b){ return (''+(b.periodo_inicio||'9999')).localeCompare(''+(a.periodo_inicio||'9999')); });
+    ord.forEach(function(ev,i){
+      h+='<div class="card ev-card" style="margin-bottom:12px"><div class="xrow" style="margin-bottom:6px"><div class="section-title">'+(ev.estado?ufChip(ev.estado)+' ':'')+'🎤 '+esc(evNome(ev)||'Novo evento')+
+         ' <span class="muted" style="font-size:11.5px;font-weight:600">'+esc(evPeriodo(ev))+'</span></div>'+
+         '<button class="btn ghost sm" onclick="delEv(\''+f.id+'\',\''+ev.id+'\')">🗑 Remover</button></div><div class="formgrid">';
+      h+=evFld(f,ev,'evento','Evento de serviço prestado','dlEventos');
+      h+=evFld(f,ev,'estado','Estado (UF) da prestação de serviço','uf');
+      h+=evFld(f,ev,'local','Local de prestação de serviço','dlLocais');
+      h+=evFld(f,ev,'funcao','Função de contratação','');
+      h+=evFld(f,ev,'periodo_inicio','Início do serviço','date');
+      h+=evFld(f,ev,'periodo_fim','Fim do serviço','date');
+      h+=evFld(f,ev,'valor','Valor de cachê (R$)','money');
+      h+='</div></div>';
+    });
   } else {
     h+='<div class="muted" style="margin-bottom:10px;font-size:12px">Informe a <b>data de realização</b> de cada NR — o vencimento (2 anos) é calculado automaticamente. Vermelho = vencida · âmbar = vence em ≤ 30 dias.</div>';
     h+='<div class="formgrid">';
@@ -1887,7 +2231,7 @@ function freelModal(f){
     FREEL_NR_DEFS.forEach(function(def){ h+='<div><b>'+def.label+':</b> '+def.desc+'</div>'; });
     h+='</div></div>';
   }
-  h+='<div class="flex" style="margin-top:18px"><button class="btn ghost" onclick="delRow(\'freelancers\',\''+f.id+'\')">🗑 Excluir</button>'+
+  h+='<div class="flex" style="margin-top:18px"><button class="btn ghost" onclick="delRow(\'freelancers\',\''+f.id+'\')">🗑 Excluir freelancer</button>'+
      '<button class="btn save" id="btnFecharFreel" style="margin-left:8px" onclick="closeOv()">💾 Salvar e fechar</button>'+
      '<span class="right muted">* campos obrigatórios</span></div>';
   return h;
@@ -2714,7 +3058,8 @@ function initUserName(){
   if(!n) promptUserName(); else renderUserChip();
 }
 var FIELD_LABELS={
-  estado:'Estado (UF) de prestação',local:'Local de prestação',evento:'Evento',periodo_inicio:'Início do serviço',periodo_fim:'Fim do serviço',
+  estado:'Estado (UF) de prestação',ev_evento:'Evento',ev_estado:'Estado (UF) do evento',ev_local:'Local do evento',ev_funcao:'Função no evento',
+  ev_periodo_inicio:'Início do evento',ev_periodo_fim:'Fim do evento',ev_valor:'Cachê do evento',ev_novo:'Evento adicionado',ev_removido:'Evento removido',local:'Local de prestação',evento:'Evento',periodo_inicio:'Início do serviço',periodo_fim:'Fim do serviço',
   empresa:'Empresa',nome:'Nome',cpf:'CPF',rg:'RG',nascimento:'Data de nascimento',telefone:'Telefone',email:'E-mail',
   emergencia_nome:'Emergência (nome)',emergencia_parentesco:'Emergência (parentesco)',emergencia_telefone:'Emergência (telefone)',
   endereco:'Endereço',cidade:'Cidade',cep:'CEP',pix:'PIX',observacoes:'Observações',admissao:'Admissão',funcao:'Função',
@@ -2733,7 +3078,7 @@ var FIELD_LABELS={
 function fieldLabel(k){ return FIELD_LABELS[k]||k; }
 function areaLabel(t){ return {colaboradores:'Colaboradores',rescisoes:'Rescisões',ferias:'Férias',folha:'Folha',custos:'Custos',freelancers:'Freelancers'}[t]||t; }
 function labelForLog(t,r){
-  if(t==='colaboradores') return r.nome||'(sem nome)';
+  if(t==='colaboradores'||t==='freelancers') return r.nome||'(sem nome)';
   if(r.colaborador) return r.colaborador;
   if(r.empresa) return r.empresa+(r.competencia?(' — '+(''+r.competencia).slice(0,7)):'');
   return '(registro)';
@@ -3021,7 +3366,7 @@ var PERM_ACTS=[['ver','👁 Ver'],['criar','➕ Criar'],['editar','✏️ Editar
 /* campos considerados sensíveis (escondidos para quem não tem a chave) */
 var SENS_KEYS={
   colaboradores:['cpf','rg','salario','cache','passagem','diaria','banco','agencia','tipo_conta','num_conta','pix'],
-  freelancers:['cpf','valor']
+  freelancers:['cpf','valor','ev_valor']
 };
 var ACESSO_EV={
   entrada:['✅ Entrada','c-ok'], saida:['🚪 Saída','c-info'], pin_errado:['⚠ PIN errado','c-warn'],
@@ -3253,7 +3598,7 @@ function lockInputs(el){
   });
   el.querySelectorAll('[onclick]').forEach(function(b){
     var oc=b.getAttribute('onclick')||'';
-    if(/upd\(|salvarColabAgora|removerFoto|fotoInput/.test(oc)){ if(b.tagName==='BUTTON') b.disabled=true; else b.style.pointerEvents='none'; }
+    if(/upd\(|updEv\(|addEv\(|delEv\(|salvarColabAgora|removerFoto|fotoInput/.test(oc)){ if(b.tagName==='BUTTON') b.disabled=true; else b.style.pointerEvents='none'; }
   });
 }
 function applyPermUI(){
